@@ -1,0 +1,121 @@
+{
+  "_comment": "Renames migrateMappings and fix_leftovers.py cannot work out on their own. Each entry replaces every occurrence of `old` with `new` in one file (path relative to the project root). An entry whose `old` text is no longer found is reported and skipped, so stale entries are harmless. Add an entry here whenever a regeneration needs a hand fix.",
+  "renames": [
+    {
+      "file": "src/main/java/com/example/tudursvehiclemod/entity/FreeCameraVehicle.java",
+      "why": "Interface methods implemented by Entity's own getYaw(float)/getPitch(float). In the release jar they are remapped to method_5705/method_5695 along with Entity, so they must carry Entity's Mojang names.",
+      "pairs": [
+        [
+          "float getYaw(float tickProgress);",
+          "float getViewYRot(float tickProgress);"
+        ],
+        [
+          "float getPitch(float tickProgress);",
+          "float getViewXRot(float tickProgress);"
+        ],
+        [
+          "ordinary inheritance (Entity's own getYaw()/getPitch(),",
+          "ordinary inheritance (Entity's own getViewYRot()/getViewXRot(),"
+        ]
+      ]
+    },
+    {
+      "file": "src/client/java/com/example/tudursvehiclemod/client/mixin/CameraMixin.java",
+      "why": "Calls through FreeCameraVehicle (see above).",
+      "pairs": [
+        [
+          "aircraft.getYaw(tickProgress)",
+          "aircraft.getViewYRot(tickProgress)"
+        ],
+        [
+          "aircraft.getPitch(tickProgress)",
+          "aircraft.getViewXRot(tickProgress)"
+        ]
+      ]
+    },
+    {
+      "file": "src/client/java/com/example/tudursvehiclemod/client/VehicleModClient.java",
+      "why": "Inside the client tick lambda, which migrateMappings skips; the receiver is one of this mod's own classes, so fix_leftovers.py cannot look it up.",
+      "pairs": [
+        [
+          "vehicle.getYaw())",
+          "vehicle.getYRot())"
+        ],
+        [
+          "vehicle.getPitch())",
+          "vehicle.getXRot())"
+        ]
+      ]
+    },
+    {
+      "file": "src/client/java/com/example/tudursvehiclemod/client/render/DitherCutoutLayers.java",
+      "why": "Nested class reference (VertexFormat.DrawMode -> VertexFormat.Mode).",
+      "pairs": [
+        [
+          "VertexFormat.DrawMode.TRIANGLES",
+          "VertexFormat.Mode.TRIANGLES"
+        ]
+      ]
+    },
+    {
+      "file": "src/client/java/com/example/tudursvehiclemod/client/render/VehicleEntityRenderer.java",
+      "why": "Generic overrides. migrateMappings does not rename them; the typed body must keep its Yarn name because addon renderers (e.g. mechframe MechRenderer) call super.updateRenderState(...) on it. A Mojang-named override forwards to it.",
+      "pairs": [
+        [
+          "\t@Override\n\tpublic net.minecraft.world.phys.Vec3 getPositionOffset(VehicleRenderState state) {",
+          "\t@Override\n\tpublic net.minecraft.world.phys.Vec3 getRenderOffset(VehicleRenderState state) {\n\t\treturn this.getPositionOffset(state);\n\t}\n\n\t/** Keeps its Yarn name on purpose: addon mods built against the release (Yarn) jar call this typed method directly, e.g. super.getPositionOffset(...) from their own renderer. In the release jar only the bridge method gets the intermediary name; this typed body stays \"getPositionOffset\". The Mojang-named override above just forwards here. */\n\tpublic net.minecraft.world.phys.Vec3 getPositionOffset(VehicleRenderState state) {"
+        ],
+        [
+          "\t@Override\n\tpublic void updateRenderState(AbstractVehicleEntity entity, VehicleRenderState state, float tickProgress) {",
+          "\t@Override\n\tpublic void extractRenderState(AbstractVehicleEntity entity, VehicleRenderState state, float tickProgress) {\n\t\tthis.updateRenderState(entity, state, tickProgress);\n\t}\n\n\t/** Keeps its Yarn name on purpose: addon mods built against the release (Yarn) jar call this typed method directly, e.g. super.updateRenderState(...) from their own renderer. In the release jar only the bridge method gets the intermediary name; this typed body stays \"updateRenderState\". The Mojang-named override above just forwards here. */\n\tpublic void updateRenderState(AbstractVehicleEntity entity, VehicleRenderState state, float tickProgress) {"
+        ],
+        [
+          "\t@Override\n\tpublic void render(VehicleRenderState state, PoseStack matrices, SubmitNodeCollector queue, CameraRenderState cameraState) {",
+          "\t@Override\n\tpublic void submit(VehicleRenderState state, PoseStack matrices, SubmitNodeCollector queue, CameraRenderState cameraState) {\n\t\tthis.render(state, matrices, queue, cameraState);\n\t}\n\n\t/** Keeps its Yarn name on purpose: addon mods built against the release (Yarn) jar call this typed method directly, e.g. super.render(...) from their own renderer. In the release jar only the bridge method gets the intermediary name; this typed body stays \"render\". The Mojang-named override above just forwards here. */\n\tpublic void render(VehicleRenderState state, PoseStack matrices, SubmitNodeCollector queue, CameraRenderState cameraState) {"
+        ]
+      ]
+    },
+    {
+      "file": "src/client/java/com/example/tudursvehiclemod/client/render/VehicleProjectileRenderer.java",
+      "why": "Generic overrides; same as VehicleEntityRenderer.",
+      "pairs": [
+        [
+          "\t@Override\n\tpublic void updateRenderState(VehicleModelProjectileEntity entity, VehicleProjectileRenderState state, float tickProgress) {",
+          "\t@Override\n\tpublic void extractRenderState(VehicleModelProjectileEntity entity, VehicleProjectileRenderState state, float tickProgress) {\n\t\tthis.updateRenderState(entity, state, tickProgress);\n\t}\n\n\t/** Keeps its Yarn name on purpose: addon mods built against the release (Yarn) jar call this typed method directly, e.g. super.updateRenderState(...) from their own renderer. In the release jar only the bridge method gets the intermediary name; this typed body stays \"updateRenderState\". The Mojang-named override above just forwards here. */\n\tpublic void updateRenderState(VehicleModelProjectileEntity entity, VehicleProjectileRenderState state, float tickProgress) {"
+        ],
+        [
+          "\t@Override\n\tpublic void render(VehicleProjectileRenderState state, PoseStack matrices, SubmitNodeCollector queue, CameraRenderState cameraState) {",
+          "\t@Override\n\tpublic void submit(VehicleProjectileRenderState state, PoseStack matrices, SubmitNodeCollector queue, CameraRenderState cameraState) {\n\t\tthis.render(state, matrices, queue, cameraState);\n\t}\n\n\t/** Keeps its Yarn name on purpose: addon mods built against the release (Yarn) jar call this typed method directly, e.g. super.render(...) from their own renderer. In the release jar only the bridge method gets the intermediary name; this typed body stays \"render\". The Mojang-named override above just forwards here. */\n\tpublic void render(VehicleProjectileRenderState state, PoseStack matrices, SubmitNodeCollector queue, CameraRenderState cameraState) {"
+        ]
+      ]
+    },
+    {
+      "file": "src/client/java/com/example/tudursvehiclemod/client/render/DummyPilotEntityRenderer.java",
+      "why": "Generic overrides; same as VehicleEntityRenderer.",
+      "pairs": [
+        [
+          "\t@Override\n\tpublic void updateRenderState(DummyPilotEntity entity, State state, float tickDelta) {",
+          "\t@Override\n\tpublic void extractRenderState(DummyPilotEntity entity, State state, float tickDelta) {\n\t\tthis.updateRenderState(entity, state, tickDelta);\n\t}\n\n\t/** Keeps its Yarn name on purpose: addon mods built against the release (Yarn) jar call this typed method directly, e.g. super.updateRenderState(...) from their own renderer. In the release jar only the bridge method gets the intermediary name; this typed body stays \"updateRenderState\". The Mojang-named override above just forwards here. */\n\tpublic void updateRenderState(DummyPilotEntity entity, State state, float tickDelta) {"
+        ],
+        [
+          "\t@Override\n\tpublic Identifier getTexture(State state) {",
+          "\t@Override\n\tpublic Identifier getTextureLocation(State state) {\n\t\treturn this.getTexture(state);\n\t}\n\n\t/** Keeps its Yarn name on purpose: addon mods built against the release (Yarn) jar call this typed method directly, e.g. super.getTexture(...) from their own renderer. In the release jar only the bridge method gets the intermediary name; this typed body stays \"getTexture\". The Mojang-named override above just forwards here. */\n\tpublic Identifier getTexture(State state) {"
+        ],
+        [
+          "\t@Override\n\tprotected boolean hasLabel(DummyPilotEntity entity, double distanceSquared) {",
+          "\t@Override\n\tprotected boolean shouldShowName(DummyPilotEntity entity, double distanceSquared) {\n\t\treturn this.hasLabel(entity, distanceSquared);\n\t}\n\n\t/** Keeps its Yarn name on purpose: addon mods built against the release (Yarn) jar call this typed method directly, e.g. super.hasLabel(...) from their own renderer. In the release jar only the bridge method gets the intermediary name; this typed body stays \"hasLabel\". The Mojang-named override above just forwards here. */\n\tprotected boolean hasLabel(DummyPilotEntity entity, double distanceSquared) {"
+        ]
+      ]
+    },
+    {
+      "file": "src/client/java/com/example/tudursvehiclemod/client/render/DummyPilotModel.java",
+      "why": "Generic override; same as VehicleEntityRenderer.",
+      "pairs": [
+        [
+          "\t@Override\n\tpublic void setAngles(LivingEntityRenderState state) {",
+          "\t@Override\n\tpublic void setupAnim(LivingEntityRenderState state) {\n\t\tthis.setAngles(state);\n\t}\n\n\t/** Keeps its Yarn name on purpose: addon mods built against the release (Yarn) jar call this typed method directly, e.g. super.setAngles(...) from their own renderer. In the release jar only the bridge method gets the intermediary name; this typed body stays \"setAngles\". The Mojang-named override above just forwards here. */\n\tpublic void setAngles(LivingEntityRenderState state) {"
+        ]
+      ]
+    }
+  ]
+}

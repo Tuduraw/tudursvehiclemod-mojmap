@@ -1,0 +1,3 @@
+{ "schemaVersion": 1, "id": "tvmtest", "version": "${version}", "name": "TVM verification harness",
+  "environment": "*", "entrypoints": { "main": [ "tvmtest.TvmTest" ], "client": [ "tvmtest.TvmTestClient" ] },
+  "depends": { "fabricloader": "*", "fabric-api": "*", "tudursvehiclemod": "*" } }
