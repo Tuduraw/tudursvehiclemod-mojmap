@@ -208,8 +208,9 @@ def main():
             sys.exit(f"Yarn build failed - see {work / 'build-yarn.log'}")
         if gradle(PROJECT, "remapJar", logfile=work / "build-mojmap.log") != 0:
             sys.exit(f"Mojang build failed - see {work / 'build-mojmap.log'}")
-        yjar = next(j for j in (copy / "build" / "libs").glob("*.jar") if "sources" not in j.name)
-        mjar = next(j for j in (PROJECT / "build" / "libs").glob("*.jar") if "sources" not in j.name)
+        # newest jar: build/libs keeps jars of earlier versions, and glob order is arbitrary
+        yjar = max((j for j in (copy / "build" / "libs").glob("*.jar") if "sources" not in j.name), key=lambda j: j.stat().st_mtime)
+        mjar = max((j for j in (PROJECT / "build" / "libs").glob("*.jar") if "sources" not in j.name), key=lambda j: j.stat().st_mtime)
         yarn_tiny, moj_tiny, _ = loom_files()
         if not compare_jars.compare(yjar, mjar, work / "compare", yarn_tiny, moj_tiny):
             sys.exit(1)
