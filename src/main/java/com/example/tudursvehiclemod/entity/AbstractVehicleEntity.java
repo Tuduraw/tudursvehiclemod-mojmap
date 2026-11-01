@@ -1186,17 +1186,55 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	 *
 	 * isTouchingWater() tests this entity's own bounding box against water, which is NOT reliable for a floating hull - a vehicle sitting on the surface can easily have its own box entirely above the waterline and read as dry. That is exactly why AircraftEntity/ShipEntity/SubmarineEntity each scan instead (see their own tudursvehiclemod$findWaterSurfaceY() docs), and it is the prime suspect for the sinking animation never starting at all. */
 	private boolean tudursvehiclemod$hasWaterNearby() {
-		// Deliberately mirrors ShipEntity's own findWaterSurfaceY() scan exactly - same BlockPos.ofFloored() + add() form, same getFluidState().isIn(FluidTags.WATER) test - rather than a separately-invented equivalent, so this stays consistent with the water detection every vehicle type already relies on.
+		// Scans the same short range as before (ShipEntity's own findWaterSurfaceY() form), but from the top down, so the first water found is the surface.
+		// Water anywhere in that range used to be enough, and then "floating" (this hull's own buoyancy having engaged) was: both cut the hull's own
+		// water landing short. A float-capable wreck started sinking the moment its buoyancy engaged - while still above the depth an intact hull of the
+		// same type settles at (its buoyancy reaches for the surface from a couple of blocks above it) - and so sank from too high up.
+		// Now a wreck keeps using exactly the landing an intact hull uses, and sinks only from where that landing settles:
+		//  - a hull whose own buoyancy is holding it on the water sinks once that buoyancy has settled and locked (tudursvehiclemod$surfaceYLocked),
+		//    or after SINK_FLOAT_SETTLE_TIMEOUT_TICKS of floating if it never quite settles;
+		//  - a hull touching the water whose buoyancy hasn't engaged within SINK_BUOYANCY_WAIT_TICKS (a type with no water handling) sinks after that wait.
 		net.minecraft.core.BlockPos basePos =
 				net.minecraft.core.BlockPos.containing(this.getX(), this.getY(), this.getZ());
-		for (int dy = SINK_WATER_SCAN_DOWN; dy <= SINK_WATER_SCAN_UP; dy++) {
+		for (int dy = SINK_WATER_SCAN_UP; dy >= SINK_WATER_SCAN_DOWN; dy--) {
 			net.minecraft.core.BlockPos checkPos = basePos.offset(0, dy, 0);
-			if (this.level().getFluidState(checkPos).is(net.minecraft.tags.FluidTags.WATER)) {
-				return true;
+			net.minecraft.world.level.material.FluidState fluid = this.level().getFluidState(checkPos);
+			if (fluid.is(net.minecraft.tags.FluidTags.WATER)) {
+				double surfaceY = checkPos.getY() + fluid.getHeight(this.level(), checkPos);
+				boolean floating = this.tickCount - this.tudursvehiclemod$lastSurfaceFloatTick <= SINK_FLOATING_GRACE_TICKS;
+				if (floating) {
+					return this.tudursvehiclemod$surfaceYLocked
+							|| this.tickCount - this.tudursvehiclemod$firstSurfaceFloatTick >= SINK_FLOAT_SETTLE_TIMEOUT_TICKS;
+				}
+				if (this.getBoundingBox().minY > surfaceY + SINK_SURFACE_CONTACT_MARGIN) {
+					this.tudursvehiclemod$waterContactTick = Integer.MIN_VALUE / 2;
+					return false;
+				}
+				// Touching the water but not floating (yet): give this hull's own water handling a few ticks to take over (it reacts a tick or
+				// so after entry). A hull with no buoyancy at all sinks after the wait.
+				if (this.tickCount - this.tudursvehiclemod$waterContactTick > SINK_BUOYANCY_WAIT_TICKS + 1) {
+					this.tudursvehiclemod$waterContactTick = this.tickCount;
+				}
+				return this.tickCount - this.tudursvehiclemod$waterContactTick >= SINK_BUOYANCY_WAIT_TICKS;
 			}
 		}
 		return false;
 	}
+
+	/** How far (blocks) above the water surface the bottom of the hull's box may still be and count as touching it. */
+	private static final double SINK_SURFACE_CONTACT_MARGIN = 0.1;
+
+	/** How recently (ticks) the hull's own buoyancy must have held it on the water for it to count as floating - see tudursvehiclemod$lastSurfaceFloatTick. */
+	private static final int SINK_FLOATING_GRACE_TICKS = 2;
+
+	/** How long (ticks) a wreck touching the water waits for its own buoyancy to engage before sinking anyway. */
+	private static final int SINK_BUOYANCY_WAIT_TICKS = 10;
+
+	/** tickCount when this wreck's box first touched the water in the current contact (see tudursvehiclemod$hasWaterNearby()). */
+	private int tudursvehiclemod$waterContactTick = Integer.MIN_VALUE / 2;
+
+	/** A floating wreck whose buoyancy hasn't settled after this many ticks of floating starts sinking anyway. */
+	private static final int SINK_FLOAT_SETTLE_TIMEOUT_TICKS = 100;
 
 	/** Lowest offset tudursvehiclemod$hasWaterNearby() scans, relative to this vehicle's own Y. */
 	private static final int SINK_WATER_SCAN_DOWN = -3;
@@ -5107,6 +5145,10 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	/** Shared water-surface buoyancy spring for any floating vehicle type (Ship/Submarine surfaced mode, Aircraft/VTOL water landing, etc.) - computes vertical velocity toward targetY via a damped spring, but locks onto a stable target and skips the computation entirely (holding Y fixed) once settled, only resuming normal spring physics once the target has moved by SURFACE_CHANGE_LOCK_THRESHOLD. Callers must call tudursvehiclemod$resetSurfaceFloatLock() whenever their own water search comes back empty, so a later return to water doesn't compare against a stale locked value. */
 	protected double tudursvehiclemod$applySurfaceFloatSpring(double targetY, double currentVelY,
 			double springStrength, double verticalDamping, double settlePositionThreshold, double settleVelocityThreshold) {
+		if (this.tickCount - this.tudursvehiclemod$lastSurfaceFloatTick > SINK_FLOATING_GRACE_TICKS) {
+			this.tudursvehiclemod$firstSurfaceFloatTick = this.tickCount;
+		}
+		this.tudursvehiclemod$lastSurfaceFloatTick = this.tickCount;
 		if (this.tudursvehiclemod$surfaceYLocked && Math.abs(targetY - this.tudursvehiclemod$lockedSurfaceTargetY) < SURFACE_CHANGE_LOCK_THRESHOLD) {
 			if (Math.abs(this.getY() - this.tudursvehiclemod$lockedSurfaceTargetY) > 1.0e-9) {
 				this.setPos(this.getX(), this.tudursvehiclemod$lockedSurfaceTargetY, this.getZ());
@@ -5127,6 +5169,11 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	}
 
 	/** Per tudursvehiclemod$applySurfaceFloatSpring()'s own doc: callers must call this whenever their own water-surface search finds nothing at all this tick (not near water), so a later return to water starts fresh instead of comparing against a stale, unrelated locked value. */
+	/** tickCount when this vehicle's own buoyancy last held it on a water surface (tudursvehiclemod$applySurfaceFloatSpring()). Lets tudursvehiclemod$hasWaterNearby() tell a hull floating on the water from one merely falling towards it. */
+	private int tudursvehiclemod$lastSurfaceFloatTick = Integer.MIN_VALUE / 2;
+	/** tickCount when the current spell of floating began (see tudursvehiclemod$lastSurfaceFloatTick). */
+	private int tudursvehiclemod$firstSurfaceFloatTick = Integer.MIN_VALUE / 2;
+
 	protected void tudursvehiclemod$resetSurfaceFloatLock() {
 		this.tudursvehiclemod$surfaceYLocked = false;
 	}

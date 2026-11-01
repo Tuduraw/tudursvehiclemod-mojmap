@@ -368,9 +368,9 @@ public class VtolEntity extends AircraftEntity {
 		if (sinking) {
 			Vec3 currentVelocity = this.getDeltaMovement();
 			double verticalVelocity;
-			if (this.tudursvehiclemod$isDestroyed()) {
-				verticalVelocity = SINKING_VERTICAL_SPEED;
-			} else {
+			// A wreck lands on the water exactly as an intact hull does (it used to drop through at SINKING_VERTICAL_SPEED instead);
+			// AbstractVehicleEntity.tudursvehiclemod$hasWaterNearby() starts its sinking once this landing has settled.
+			{
 				java.util.OptionalDouble surfaceY = tudursvehiclemod$findWaterSurfaceY();
 				if (surfaceY.isPresent()) {
 					double targetY = surfaceY.getAsDouble() + SURFACE_FLOAT_DEPTH - SINKING_HULL_EXTRA_DEPTH;
