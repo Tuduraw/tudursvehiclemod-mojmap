@@ -1,13 +1,11 @@
 package com.example.tudursvehiclemod.mixin;
 
-import com.example.tudursvehiclemod.entity.SubmarineEntity;
 import net.minecraft.network.protocol.game.ServerboundMoveVehiclePacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -133,36 +131,38 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * the working theory that the jitter's true source lies elsewhere and
  * this mixin's own carried-vehicle protection remains necessary regardless
  * for the "doesn't follow at all while mounted" issue it was written to
- * fix. */
+ * fix.
+ *
+ * Submarines are no longer special-cased: they are client-authoritative like
+ * every other vehicle. The reason above (the client not predicting the
+ * level ascend/descend keys) went away once the client started applying
+ * those inputs to its own copy (VehicleModClient), and keeping the server
+ * authoritative left the rider's prediction a network delay ahead of the
+ * server - a constant gap of delay x speed that had to be corrected
+ * (vanilla's resync answered every report more than 0.25 blocks off, and
+ * the client's one-delay-old answer to that resync was off again, so the
+ * two kept resyncing each other many times per tick). The capture/restore
+ * also ran on the network thread's first call and raced with the server
+ * thread's own, so the server sometimes took the client's stale pose. */
 @Mixin(ServerGamePacketListenerImpl.class)
 public abstract class VehicleMoveIgnoreMixin {
 
 	@Shadow
 	public ServerPlayer player;
 
-	@Unique
-	private SubmarineEntity tudursvehiclemod$capturedVehicle;
-	@Unique
-	private double tudursvehiclemod$preX, tudursvehiclemod$preY, tudursvehiclemod$preZ;
-	@Unique
-	private float tudursvehiclemod$preYaw, tudursvehiclemod$prePitch;
-
 	@Inject(method = "handleMoveVehicle", at = @At("HEAD"), cancellable = true)
 	private void tudursvehiclemod$interceptVehicleMove(ServerboundMoveVehiclePacket packet, CallbackInfo ci) {
+		// onVehicleMove() is first entered on the network thread, where NetworkThreadUtils/PacketUtils only re-schedules it onto the
+		// server thread. Only act on the server thread (the old submarine handling captured state here, racing with the server
+		// thread's own call).
+		if (!this.player.level().getServer().isSameThread()) {
+			return;
+		}
 		Entity vehicle = this.player.getVehicle();
 		// Under an addon's external controller (AbstractVehicleEntity.ExternalMotionController) the server alone decides where the vehicle is, and the rider's client computes the same pose itself - a report from that client is at best one network delay old, so it's dropped without a resync.
 		if (vehicle instanceof com.example.tudursvehiclemod.entity.AbstractVehicleEntity controlledVehicle
 				&& controlledVehicle.tudursvehiclemod$getExternalMotionController() != null) {
 			ci.cancel();
-			return;
-		}
-		if (vehicle instanceof SubmarineEntity submarine) {
-			this.tudursvehiclemod$capturedVehicle = submarine;
-			this.tudursvehiclemod$preX = vehicle.getX();
-			this.tudursvehiclemod$preY = vehicle.getY();
-			this.tudursvehiclemod$preZ = vehicle.getZ();
-			this.tudursvehiclemod$preYaw = vehicle.getYRot();
-			this.tudursvehiclemod$prePitch = vehicle.getXRot();
 			return;
 		}
 		if (vehicle instanceof com.example.tudursvehiclemod.entity.AbstractVehicleEntity abstractVehicle
@@ -171,17 +171,5 @@ public abstract class VehicleMoveIgnoreMixin {
 			this.player.connection.send(new net.minecraft.network.protocol.game.ClientboundMoveVehiclePacket(
 					vehicle.position(), vehicle.getYRot(), vehicle.getXRot()));
 		}
-	}
-
-	@Inject(method = "handleMoveVehicle", at = @At("RETURN"))
-	private void tudursvehiclemod$restoreServerPosition(ServerboundMoveVehiclePacket packet, CallbackInfo ci) {
-		SubmarineEntity vehicle = this.tudursvehiclemod$capturedVehicle;
-		this.tudursvehiclemod$capturedVehicle = null;
-		if (vehicle == null) {
-			return;
-		}
-		vehicle.setPos(this.tudursvehiclemod$preX, this.tudursvehiclemod$preY, this.tudursvehiclemod$preZ);
-		vehicle.setYRot(this.tudursvehiclemod$preYaw);
-		vehicle.setXRot(this.tudursvehiclemod$prePitch);
 	}
 }
