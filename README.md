@@ -31,6 +31,9 @@ MCヘリコプターやFlan's Modのような「乗り物MOD」を、**JSON定�
 | CameraPathAddon(カメラ系modのような機能を追加するアドオンMod) | https://github.com/Tuduraw/camerapathaddon |
 |---|---|
 | **公式アドオンパック** | |
+| WW2パック(WW2機の兵器を追加するパック) | https://www.mediafire.com/file/dh7yhye1jnoel48/vehicleaddonww2.zip/file |
+| 試作機パック(WW2期の試作機を追加するパック)| https://www.mediafire.com/file/9pcu32lpt2jce6t/ww2projects.zip/file |
+| 架空期パック(WW2風の架空期を追加するパック)| https://www.mediafire.com/file/gmd2d4kilb3um0p/FictionalWW2Pack.zip/file |
 |---|---|
 | **サンプル** | |
 | バイクアドオンmod(簡易的なアドオンModの実装例) | https://github.com/Tuduraw/motorcycleaddon |
