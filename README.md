@@ -1,4 +1,5 @@
 # Tudur's Vehicle Mod (Fabric 1.21.11)
+Forge 1.20.1 >> https://github.com/Tuduraw/tudursvehiclemod-forge
 
 **作者**: Tuduraw
 **ライセンス**: MIT License(`LICENSE`を参照)
