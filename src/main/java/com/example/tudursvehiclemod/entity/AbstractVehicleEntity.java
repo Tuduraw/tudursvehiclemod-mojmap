@@ -255,6 +255,8 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	private double lastTickX;
 	private double lastTickZ;
 	private boolean hasLastTickPosition;
+	/** The yaw at the end of the previous tick, for tudursvehiclemod$updateCrawlerTrackPhase()'s turn rate (the "lastYaw" its docs mention). It used to be stored in vanilla's yRotO (Yarn calls that field lastYaw), which the renderer interpolates the yaw from: setting it to the current yaw at the end of every tick left nothing to interpolate, so every vehicle's yaw - its hull, and anything drawn with it - turned in one-tick steps instead of smoothly. */
+	private float tudursvehiclemod$lastTickYaw = Float.NaN;
 	/** AddCrawlerTrack: per-track accumulated belt distance, each accumulating independently by its own differential-steering speed (so left/right sides end up at different phases while turning). */
 	private final java.util.Map<String, Float> crawlerTrackPhase = new java.util.HashMap<>();
 	private final java.util.Map<String, Float> prevCrawlerTrackPhase = new java.util.HashMap<>();
@@ -2144,7 +2146,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		if (this.entityData.get(RUNWAY_CARRY_WHEEL_SYNC)) {
 			this.lastTickX = this.getX();
 			this.lastTickZ = this.getZ();
-			this.yRotO = this.getYRot();
+			this.tudursvehiclemod$lastTickYaw = this.getYRot();
 		}
 		// Reverted back out entirely. tudursvehiclemod$updateWheelSpinPhase()/tudursvehiclemod$updateCrawlerTrackPhase() now suppress their own animation accumulation directly while carried and unpiloted (see their own doc), independent of velocity entirely, so this hook no longer serves the purpose it was reintroduced for either.
 		// A destroyed wreck sitting on water sinks instead of running its normal physics. Chosen and advanced BEFORE updateVehicleMovement() so every vehicle type's own buoyancy sees tudursvehiclemod$isSinking() already true this tick and stands down - see that method's own doc.
@@ -5250,8 +5252,11 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	private void tudursvehiclemod$updateCrawlerTrackPhase() {
 		boolean suppressedByRunwayCarry = this.entityData.get(RUNWAY_CARRY_WHEEL_SYNC) && this.getControllingPassenger() == null;
 		float actualForwardSpeed = tudursvehiclemod$getActualForwardSpeed();
-		float angularVelocityRadians = (float) Math.toRadians(Mth.wrapDegrees(this.getYRot() - this.yRotO));
-		this.yRotO = this.getYRot();
+		if (Float.isNaN(this.tudursvehiclemod$lastTickYaw)) {
+			this.tudursvehiclemod$lastTickYaw = this.getYRot();
+		}
+		float angularVelocityRadians = (float) Math.toRadians(Mth.wrapDegrees(this.getYRot() - this.tudursvehiclemod$lastTickYaw));
+		this.tudursvehiclemod$lastTickYaw = this.getYRot();
 		for (com.example.tudursvehiclemod.asset.CrawlerTrackPart track : this.getDefinition().crawlerTracks()) {
 			float previous = this.crawlerTrackPhase.getOrDefault(track.part(), 0f);
 			this.prevCrawlerTrackPhase.put(track.part(), previous);
@@ -7018,7 +7023,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 						candidate.setYRot(candidate.getYRot() + deltaYaw);
 						if (candidate instanceof AbstractVehicleEntity parkedVehicleForYaw) {
 							// Advances this candidate's own lastYaw to the POST-carry value here, so the next tick's own yaw-delta measurement (tudursvehiclemod$getCrawlerTrackSpeed()'s own use of lastYaw) already accounts for this turn - the same reasoning as lastTickX/lastTickZ's own correction above, for rotation instead of position.
-							parkedVehicleForYaw.yRotO = candidate.getYRot();
+							parkedVehicleForYaw.tudursvehiclemod$lastTickYaw = candidate.getYRot();
 						}
 						if (candidate instanceof AircraftEntity aircraftCandidate2) {
 							// SetYaw() alone has no effect on this class's own actual rendered attitude (a separate Quaternionf) at all.
@@ -8813,11 +8818,25 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	 * <p>This runs on both sides: a piloted vehicle's movement is also simulated on the clients, so the pilot's own client turns its own view here from its own input. The other passengers' clients can't (they don't have the pilot's input), so the server tells them - with a relative rotation packet. This used to be a full requestTeleport() to every player aboard, every tick of a turn: it re-sent the position, overwrote the pilot's own (already turned) view with a server copy one round trip old, and while each teleport waited for its confirmation the server dropped that player's movement/look packets - the server's idea of where they were looking lagged for as long as the turn lasted. */
 	protected void tudursvehiclemod$turnPassengerViews(float yawDelta) {
 		Entity controller = this.getControllingPassenger();
-		for (Entity passenger : this.tudursvehiclemod$getRealPassengerList()) {
-			passenger.setYRot(passenger.getYRot() - yawDelta);
+		java.util.List<Entity> passengers = this.tudursvehiclemod$getRealPassengerList();
+		this.tudursvehiclemod$pendingPassengerTurns.keySet().retainAll(passengers);
+		for (Entity passenger : passengers) {
+			this.tudursvehiclemod$pendingPassengerTurns.merge(passenger, -yawDelta, Float::sum);
 			if (passenger != controller && passenger instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
 				serverPlayer.connection.send(new net.minecraft.network.protocol.game.ClientboundPlayerRotationPacket(-yawDelta, true, 0f, true));
 			}
+		}
+	}
+
+	/** Yaw each passenger still has to be turned by (see tudursvehiclemod$turnPassengerViews()), applied in positionRider().
+	 *
+	 * <p>The level ticks a vehicle, then calls setOldPosAndRot() on each passenger, then ticks the passenger (whose rideTick() calls positionRider()). Turning the passenger directly in the vehicle's tick put the turn before that setOldPosAndRot(), so it became part of the passenger's "previous" rotation and was never interpolated: while turning, the pilot's view jumped by the whole turn at each tick boundary while the hull rotated smoothly between ticks, and the hull appeared to wobble left and right on screen. Applying it from positionRider() - as vanilla's Boat does - turns the view after setOldPosAndRot(), so it interpolates like the hull. */
+	private final java.util.Map<Entity, Float> tudursvehiclemod$pendingPassengerTurns = new java.util.IdentityHashMap<>();
+
+	private void tudursvehiclemod$applyPendingPassengerTurn(Entity passenger) {
+		Float turn = this.tudursvehiclemod$pendingPassengerTurns.remove(passenger);
+		if (turn != null) {
+			passenger.setYRot(passenger.getYRot() + turn);
 		}
 	}
 
@@ -9804,6 +9823,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		if (!this.hasPassenger(passenger)) {
 			return;
 		}
+		this.tudursvehiclemod$applyPendingPassengerTurn(passenger);
 		VehicleDefinition def = getDefinition();
 		int index = this.tudursvehiclemod$getAssignedSeatIndex(passenger);
 		if (index < 0 || index >= def.seats().size()) {

@@ -3,7 +3,9 @@ plugins {
 	id 'maven-publish'
 }
 
-version = project.mod_version
+// The jar/Maven version carries the loader and Minecraft version (tudursvehiclemod-1.1.1-fabric-1.21.11.jar) so
+// builds for several environments can sit side by side; the mod's own version (fabric.mod.json) stays mod_version.
+version = "${project.mod_version}-${project.mod_loader}-${project.minecraft_version}"
 group = project.maven_group
 
 base {
@@ -36,7 +38,7 @@ dependencies {
 }
 
 processResources {
-	inputs.property "version", project.version
+	inputs.property "version", project.mod_version
 	filesMatching("fabric.mod.json") {
 		expand "version": inputs.properties.version
 	}
@@ -54,7 +56,7 @@ java {
 
 // Lets an ADDON mod depend on this one. `./gradlew publishToMavenLocal` installs
 // the remapped jar (plus sources) into the local Maven repository, which an addon
-// project then resolves with `modImplementation "com.example.tudursvehiclemod:tudursvehiclemod:<version>"`
+// project then resolves with `modImplementation "com.example.tudursvehiclemod:tudursvehiclemod:1.1.1-fabric-1.21.11"`
 // after adding `mavenLocal()` to its own repositories - see Readme_Addon_Mod.md.
 publishing {
 	publications {

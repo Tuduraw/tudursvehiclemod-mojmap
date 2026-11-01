@@ -1,6 +1,6 @@
 # 検証キット(tvmtest)
 
-公開版(Yarn)とMojang版のjarを、同じ手順で動かして比べるためのものです。2026-10-31の検証(`claude/mojmap-verification-2026-10-31.md`)で使いました。Linux(bash)で動かすことを前提にしています。
+Yarn版(1.1.1まで)とMojang版のjarを、同じ手順で動かして比べるためのものです。2026-10-31の移行時の検証(`claude/mojmap-verification-2026-10-31.md`)で使いました。どちらか一方のjarだけを動かして、全機種・全武装の動作確認に使うこともできます。Linux(bash)で動かすことを前提にしています。
 
 ## 構成
 
@@ -21,7 +21,7 @@ cd harness
 ./gradlew build -PtvmJar=<比べるtudursvehiclemodのjar>
 ```
 
-`-PtvmJar`を省略すると`../../../build/libs/tudursvehiclemod-mojmap-1.1.0.jar`を参照します。コンパイルに使うだけなので、どちらのjarに対してビルドしても同じハーネスになります。
+`-PtvmJar`を省略すると`../../../build/libs/tudursvehiclemod-1.1.1-fabric-1.21.11.jar`を参照します。コンパイルに使うだけなので、どちらのjarに対してビルドしても同じハーネスになります。
 
 ## サーバーでの比較
 

@@ -1,59 +1,88 @@
-# tudursvehiclemod-mojmap(Mojangマッピングの開発用コピー)
+# MOJMAP.md - Mojang公式マッピングへの移行
 
-公開版(Yarnマッピング、1.21.11 Fabric)から自動生成した開発用プロジェクトです。
-**公開版には一切変更を加えていません。** 公開・配布は従来どおりYarn版から行います。
+1.21.11 Fabric版は、**Mojang公式マッピング**(`loom.officialMojangMappings()`)で開発しています。
+1.1.1まではYarnマッピングで開発していました。このファイルは、移行の経緯と、
+Yarn版向けに作られたアドオンMODとの互換性を保つために守ることをまとめたものです。
 
-このコピーの用途は、他ローダー・他バージョンへの移植作業(`claude/forge-1.20.1-port-evaluation-2026-10-31.md`)の土台にすることです。
-Forge 1.20.1や26.1以降と同じ公式名でコードを読み書きできます。
+## 移行の経緯
 
-## Yarn版との関係
+- Minecraft 1.21.11は、FabricがYarnマッピングを更新する最後のバージョンです。以降はMojang公式マッピングが推奨されています。
+- Forge 1.20.1版などの他ローダー・他バージョンも、Mojang公式の名前でコードを共有できます
+  (Forge版はこのプロジェクトのソースから自動生成しています)。
+- 移行にあたっては、Yarn版(1.1.1)のソースを`tools/mojmap/convert.py`で機械的に変換し、
+  両方のjarを中間名(intermediary)の段階でメンバー単位に比較して、実行時のコードが同じであることを確認しました
+  (下記「Yarn版との同等性」)。
 
-| 項目 | Yarn版(公開版) | このコピー |
+| 項目 | 1.1.1まで(Yarn) | 現在(Mojang) |
 |---|---|---|
-| マッピング | Yarn `1.21.11+build.4` | Mojang公式(`loom.officialMojangMappings()`) |
-| jar名 / Mavenのartifact | `tudursvehiclemod` | `tudursvehiclemod-mojmap` |
+| マッピング | Yarn `1.21.11+build.4` | Mojang公式 |
+| jar名 | `tudursvehiclemod-1.1.1.jar` | `tudursvehiclemod-1.1.1-fabric-1.21.11.jar` |
+| Mavenの座標 | `com.example.tudursvehiclemod:tudursvehiclemod:1.1.1` | `com.example.tudursvehiclemod:tudursvehiclemod:1.1.1-fabric-1.21.11` |
+| `fabric.mod.json`のバージョン | `1.1.1` | `1.1.1`(変わらない) |
 | mod ID・パッケージ・クラス名 | `tudursvehiclemod` | 同じ |
-| 実行時のコード | — | 同じ(下記「同等性の確認」) |
-| `docs/`・`official_addonpack/`・`tools/`の変換ツール類 | あり | 含めない(Yarn版を参照) |
 
-- artifact名を分けているので、`publishToMavenLocal`してもYarn版(アドオンmodが参照するもの)を上書きしません。
-- mod IDは同じなので、両方のjarを同時に`mods`へ入れるとFabric Loaderが重複として起動を止めます。
+jar名とMavenのバージョンには、ローダー名とMinecraftのバージョンを付けています(`<mod_version>-<mod_loader>-<minecraft_version>`、
+`gradle.properties`の`mod_loader`と`minecraft_version`から作られます)。複数の環境向けのjarを区別するためです。
+MODのバージョン(`fabric.mod.json`、アドオンの`depends`が比較する値)は`mod_version`のままです。
 
-## 同等性の確認
+## アドオンMODとの互換性
 
-アドオンmodは公開版(Yarn版)のjarに対してコンパイルされています。Mojang版はその代わりにそのまま入るよう、公開版jarのクラス・フィールド・メソッドを**すべて同じ名前・同じ中身で**持つ必要があります。Loomはどちらのjarも中間名(intermediary)で出力するので、`tools/mojmap/compare_jars.py`で両方を逆アセンブルし、メンバー単位で比較しています。
-
-- クラス・リソースの構成: 完全に一致(`fabric.mod.json`、Mixin設定、テクスチャ等)
-- 公開版の全メンバー: Mojang版にも同じ名前・同じバイトコードで存在
-- 許容している違いは次の2つだけです。
-  - ラムダの合成メソッド名(`lambda$reload$0` → `lambda$onResourceManagerReload$0`)。privateで、外から呼ばれることはありません。
-  - Mojang版にだけある転送用メソッド9個(下記)。
+アドオンMODは前提MODのjarを中間名で参照するため、アドオン側のマッピングがYarnでもMojangでも動作します。
+Yarn版(1.1.1)に対して作られた既存のアドオンも、そのまま動作します。そのために、次の点を守ってください。
 
 ### 総称型オーバーライドの名前(転送用メソッド)
 
-描画クラスの`updateRenderState(AbstractVehicleEntity, VehicleRenderState, float)`のように、総称型の型引数で宣言したオーバーライドは、公開版のjarでも**Yarn名のまま**残ります(中間名になるのは、Minecraftが呼ぶブリッジメソッドだけです)。アドオンmodはこのYarn名を直接呼んでいます(例: mechframeの`MechRenderer`が`super.updateRenderState(...)`を呼ぶ)。
+描画クラスの`updateRenderState(AbstractVehicleEntity, VehicleRenderState, float)`のように、総称型の型引数で宣言した
+オーバーライドは、jarの中でも中間名にならず、**ソースに書いた名前のまま**残ります(中間名になるのは、Minecraftが呼ぶ
+ブリッジメソッドだけです)。Yarn版のjarではこれらがYarn名で、アドオンMODはその名前を直接呼んでいます
+(例: mechframeの`MechRenderer`が`super.updateRenderState(...)`を呼ぶ)。
 
-そのためMojang版では、本体のメソッドはYarn名のまま残し、Mojang名のオーバーライド(`extractRenderState`など)からそこへ転送する形にしています。対象は`VehicleEntityRenderer`(`getPositionOffset`・`updateRenderState`・`render`)、`VehicleProjectileRenderer`(`updateRenderState`・`render`)、`DummyPilotEntityRenderer`(`updateRenderState`・`getTexture`・`hasLabel`)、`DummyPilotModel`(`setAngles`)です。
+そのため、本体のメソッドは**Yarn名のまま残し**、Mojang名のオーバーライドからそこへ転送しています。
 
-## Yarn版の更新に追従する
+| クラス | Yarn名(本体) | Mojang名(転送) |
+|---|---|---|
+| `VehicleEntityRenderer` | `updateRenderState`・`render`・`getPositionOffset` | `extractRenderState`・`submit`・`getRenderOffset` |
+| `VehicleProjectileRenderer` | `updateRenderState`・`render` | `extractRenderState`・`submit` |
+| `DummyPilotEntityRenderer` | `updateRenderState`・`getTexture`・`hasLabel` | `extractRenderState`・`getTextureLocation`・`shouldShowName` |
+| `DummyPilotModel` | `setAngles` | `setupAnim` |
 
-`src/`は手で編集しません。Yarn版を更新したら、作り直します。
+- **Yarn名のメソッドを削除・改名しないでください。** Yarn版向けのアドオンが`NoSuchMethodError`で停止します。
+- 処理を変更するときは、Yarn名の本体を変更します。転送メソッドは本体を呼ぶだけにしておきます。
+- 同じ形のオーバーライドを新しく追加する場合は、Mojang名だけで構いません(既存のアドオンが呼んでいないため)。
+
+### 公開しているメソッド・フィールド
+
+アドオンが使う`public`・`protected`のメンバー(`tudursvehiclemod$`で始まるものなど)は、名前と引数の型を変えると
+既存のアドオンが動かなくなります。変える場合は、古いものを残して新しいものへ転送するか、バージョンを上げて
+`docs/Readme_Addon_Mod.md`に記載してください。
+
+## Yarn版との同等性
+
+移行時に、Yarn版とMojang版のjarを比較して、次のことを確認しています(`tools/mojmap/compare_jars.py`)。
+
+- クラス・リソースの構成が完全に一致(`fabric.mod.json`、Mixin設定、テクスチャ等)
+- Yarn版の全メンバーが、Mojang版にも同じ名前・同じバイトコードで存在
+- 違いは、ラムダの合成メソッド名(privateで、外から呼ばれない)と、上記の転送用メソッドだけ
+
+既存のアドオンとの互換性を確かめたいときは、Yarn版1.1.1のjarと今のjarをこのスクリプトで比べると、
+Yarn版にあったメンバーが欠けていないかを確認できます。その後に変更したメソッドも「中身が違う」として
+報告されるため(`code differs`)、見るのは`missing in Mojang jar`・`class only in Yarn jar`と報告されたものです。
+報告は先頭40件までなので、多いときは変更の少ない時点のjarと比べてください。
 
 ```
-python tools/mojmap/convert.py --yarn <Yarn版プロジェクトのパス> --verify
+python tools/mojmap/compare_jars.py <Yarn版1.1.1のjar> <今のjar> <作業フォルダ> --yarn <yarnのmappings.tiny> --mojmap <mojmapのmappings.tiny>
 ```
 
-1. Yarn版を`build/mojmap-convert/yarn-copy`にコピーし、LoomのmigrateClientMappingsでmainとclientのソースをまとめて変換します。Yarn版のフォルダには書き込みません。
-2. このコピーのビルドファイルをYarn版から作り直します(マッピング行、jar名、プロジェクト名だけを変更)。`src/`を変換結果とYarn版のリソースで置き換えます。`tools/`とこのファイルは残ります。
-3. `tools/mojmap/manual_renames.json`の手修正を適用します。
-4. コンパイルし、javacのエラーをもとに`fix_leftovers.py`が残った名前を直します。コンパイルが通るまで繰り返します。
-5. `--verify`を付けると、両方のjarを作って比較します。公開版にあるメソッドが欠けている・中身が違うなど、アドオンmodとの互換性を壊す違いがあれば、終了コード1で止まります。**配布・テストの前に必ず`--verify`を付けて実行してください。**
+## 移行に使ったツール(通常は使いません)
 
-所要時間は数分です(初回はLoomのキャッシュ作成が加わります)。
+| ファイル | 内容 |
+|---|---|
+| `tools/mojmap/convert.py` | Yarn版のプロジェクトからこのプロジェクトを作り直す。**実行すると`src/`とビルドファイルがYarn版の内容で置き換わり、こちらで加えた変更が失われます。** Yarn版の開発を終えたため、今後は使いません |
+| `tools/mojmap/fix_leftovers.py`・`manual_renames.json`・`mapping_lookup.py` | `convert.py`の補助。`mapping_lookup.py`は、YarnとMojangの名前の対応を調べるのに今も使えます |
+| `tools/mojmap/compare_jars.py` | 2つのjarを中間名でメンバー単位に比較する(上記) |
+| `tools/verify/` | Yarn版とMojang版を実際に動かして比べる検証キット(`tools/verify/README.md`) |
 
-### 自動で直らなかったとき
-
-`fix_leftovers.py`が`UNRESOLVED`と表示した箇所は、`manual_renames.json`に1行ずつ追加します。どの名前に直すかは次で調べられます。
+YarnとMojangの名前の対応を調べるには:
 
 ```
 python tools/mojmap/mapping_lookup.py <yarnのmappings.tiny> <mojmapのmappings.tiny> "Entity#getPitch"
@@ -62,17 +91,12 @@ python tools/mojmap/mapping_lookup.py <yarnのmappings.tiny> <mojmapのmappings.
 mappings.tinyの場所: `~/.gradle/caches/fabric-loom/1.21.11/` の
 `net.fabricmc.yarn.*/mappings.tiny`(Yarn)と `loom.mappings.*layered*/mappings.tiny`(Mojang)
 
-自動変換が取りこぼす主なパターン:
-- ラムダの中のコード(クライアントのtick処理など)→ `fix_leftovers.py`が直す
-- 総称型の引数を持つオーバーライド(描画クラスの`updateRenderState`など)→ `manual_renames.json`で、Yarn名の本体+Mojang名の転送メソッドにする(名前を付け替えるだけだとアドオンmodが`NoSuchMethodError`で落ちる)
-- このmodのインターフェースが、Entityのメソッドをそのまま実装として使っている場合(`FreeCameraVehicle`)→ `manual_renames.json`
-- `VertexFormat.DrawMode`のような入れ子クラスの参照 → `manual_renames.json`
+## 残っているYarnの名残
 
-### 既知の制限
+機械的な変換では、次のものは変換されていません。コードの動作には関係ありません。
 
-- コメント・Javadoc内のメソッド名はYarnのまま残ります(`getYaw()`など)。コードの動作には関係ありません。
-- 引数・ローカル変数の名前は変換しません(Yarn版のまま)。
+- コメント・Javadoc内のメソッド名(`getYaw()`など)
+- 引数・ローカル変数の名前(`world`など)
 
-## 動作の比較(tools/verify)
-
-公開版とMojang版を実際に動かして比べる検証キットです。使い方は`tools/verify/README.md`を参照してください。
+編集のついでに、Mojang名(`getYRot()`・`level`など)へ直していってください。上記の転送用メソッド(Yarn名の本体)は、
+互換性のために名前を残しているものなので、直さないでください。
