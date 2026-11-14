@@ -248,8 +248,6 @@
   "gui.tudursvehiclemod.server_config.destroyed_despawn_enabled.tooltip": "(即座に反映) (true / false)\n破壊された車両が、残骸として永久にワールドに残り続ける代わりに、下記のタイマー経過後に自動的にデスポーンするようになります。正常に運転可能な車両には一切影響しません。",
   "gui.tudursvehiclemod.server_config.destroyed_despawn_seconds": "破壊された車両のデスポーンまでの時間: %s 秒",
   "gui.tudursvehiclemod.server_config.destroyed_despawn_seconds.tooltip": "(即座に反映) (30 - 1800秒)\n破壊された車両がデスポーンするまでワールドに留まる時間です。「破壊された車両のデスポーン」がオンの場合のみ意味を持ちます。",
-  "gui.tudursvehiclemod.server_config.carrier_runway_width": "空母滑走路の想定幅: %s",
-  "gui.tudursvehiclemod.server_config.carrier_runway_width.tooltip": "(即座に反映、新規生成される滑走路タイルのみ - 既存のタイルは既に固定されたサイズを維持) (10 - 60ブロック)\n実際の車両ファイルの滑走路幅がまだ分からない、Mod読み込み時点で空母滑走路の支持タイルのサイズを決めるために使う想定幅です。実際の滑走路幅がデフォルト値(30)と異なる場合は、実際の値に合わせて設定してください。",
   "gui.tudursvehiclemod.server_config.projectile_chunk_limit": "弾丸チャンクロード上限: %s",
   "gui.tudursvehiclemod.server_config.projectile_chunk_limit.disabled": "弾丸チャンクロード上限: 無効",
   "gui.tudursvehiclemod.server_config.projectile_chunk_limit.tooltip": "(即座に反映) (無効 / 50 - 1000)\n飛翔中の弾丸がサーバー全体で強制ロードするチャンク数の合計上限を設定します。これにより、プレイヤーから離れた場所を飛ぶ弾丸でも着弾まで動作し続けます。上限を超える場合、召喚タイミングが最も古い弾丸から解除されます。無効(0)にすると、この機能導入前と同様、弾丸は一切チャンクを強制ロードしなくなります。CAS/Carrier機体や他の常時ロード機能には影響しません(それらは対応する武器・車両ファイル側で調整できます)。",

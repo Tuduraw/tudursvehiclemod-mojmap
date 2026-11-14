@@ -21,6 +21,7 @@ import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.mob.ZombieEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.SpawnReason;
 import net.minecraft.entity.attribute.EntityAttributes;
@@ -93,6 +94,7 @@ public class TvmTest implements ModInitializer {
 			}
 		});
 		ServerTickEvents.END_SERVER_TICK.register(this::tick);
+		ServerTickEvents.END_SERVER_TICK.register(srv -> deckServerTick());
 		CommandRegistrationCallback.EVENT.register((dispatcher, access, env) -> dispatcher.register(
 				CommandManager.literal("tvmtest").requires(src -> true)
 						.then(CommandManager.literal("run").then(CommandManager.argument("name", StringArgumentType.word())
@@ -103,6 +105,14 @@ public class TvmTest implements ModInitializer {
 								.executes(ctx -> { start(ctx.getSource().getServer(), StringArgumentType.getString(ctx, "name"), "park"); return 1; })))
 						.then(CommandManager.literal("parkcheck").then(CommandManager.argument("name", StringArgumentType.word())
 								.executes(ctx -> { start(ctx.getSource().getServer(), StringArgumentType.getString(ctx, "name"), "parkcheck"); return 1; })))
+						.then(CommandManager.literal("carriers").then(CommandManager.argument("name", StringArgumentType.word())
+								.then(CommandManager.argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+										.then(CommandManager.argument("ticks", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+												.then(CommandManager.argument("mode", StringArgumentType.word())
+														.executes(ctx -> { carriers(ctx.getSource().getServer(), StringArgumentType.getString(ctx, "name"),
+																com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "count"),
+																com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "ticks"),
+																StringArgumentType.getString(ctx, "mode")); return 1; }))))))
 						.then(CommandManager.literal("stress").then(CommandManager.argument("name", StringArgumentType.word())
 								.then(CommandManager.argument("copies", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
 										.then(CommandManager.argument("ticks", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
@@ -118,6 +128,8 @@ public class TvmTest implements ModInitializer {
 								.executes(ctx -> { deck(ctx.getSource().getServer(), StringArgumentType.getString(ctx, "name")); return 1; })))
 						.then(CommandManager.literal("probe").executes(ctx -> { probe(ctx.getSource().getWorld()); return 1; }))
 						.then(CommandManager.literal("gallery").executes(ctx -> { gallery(ctx.getSource().getWorld()); return 1; }))
+						.then(CommandManager.literal("deckwalk").then(CommandManager.argument("step", StringArgumentType.word())
+								.executes(ctx -> { deckwalk(ctx.getSource().getPlayer(), StringArgumentType.getString(ctx, "step")); return 1; })))
 						.then(CommandManager.literal("view").then(CommandManager.argument("i", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
 								.executes(ctx -> { view(ctx.getSource().getPlayer(), com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "i")); return 1; })))
 						.then(CommandManager.literal("ride").then(CommandManager.argument("i", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
@@ -538,6 +550,163 @@ public class TvmTest implements ModInitializer {
 		then("write", this::write);
 	}
 
+	// ------------------------------------------------------------------ carrier load test
+	/**
+	 * Runway cost: `count` copies of every definition with a runway, each in its own water lane, with zombies walking on
+	 * the deck. mode "park": the ships stay put; "sail": a dummy pilot drives each one at full throttle. Records the
+	 * server tick durations (as stress does) and, at the end, how many of the zombies are still on their deck.
+	 */
+	void carriers(MinecraftServer srv, String name, int count, int ticks, String mode) {
+		this.server = srv;
+		this.reportName = name;
+		this.report = new JsonObject();
+		report.addProperty("mode", "carriers-" + mode);
+		report.add("exceptions", new JsonArray());
+		ServerWorld world = srv.getOverworld();
+		List<Identifier> ids = new ArrayList<>();
+		for (Identifier id : VehicleRegistry.getAll().keySet()) {
+			if (!VehicleRegistry.get(id).orElseThrow().runways().isEmpty() && isWater(VehicleRegistry.get(id).orElseThrow())) {
+				ids.add(id);
+			}
+		}
+		ids.sort(java.util.Comparator.comparing(Identifier::toString));
+		final boolean sail = mode.equals("sail");
+		final int laneWidth = 40, laneLength = 320;
+		final int total = ids.size() * count;
+		final List<AbstractVehicleEntity> fleet = new ArrayList<>();
+		final List<Entity> riders = new ArrayList<>();
+		then("carriers/setup", () -> {
+			for (int cx = -2; cx <= (total * laneWidth) / 16 + 1; cx++) {
+				for (int cz = -4; cz <= laneLength / 16 + 2; cz++) {
+					force(world, cx, cz, true);
+				}
+			}
+		});
+		wait("carriers/chunks", 60, null);
+		then("carriers/spawn", () -> {
+			for (int n = 0; n < total; n++) {
+				final Identifier id = ids.get(n % ids.size());
+				final int x = n * laneWidth;
+				guard("carriers/" + id, () -> {
+					for (int px = x - laneWidth / 2; px < x + laneWidth / 2; px++) for (int pz = -40; pz <= laneLength; pz++) for (int y = WATER_TOP - 11; y <= WATER_TOP - 1; y++) {
+						boolean wall = y == WATER_TOP - 11 || px == x - laneWidth / 2 || px == x + laneWidth / 2 - 1 || pz == -40 || pz == laneLength;
+						world.setBlockState(new BlockPos(px, y, pz), wall ? Blocks.STONE.getDefaultState() : Blocks.WATER.getDefaultState(), Block.NOTIFY_LISTENERS | Block.FORCE_STATE);
+					}
+					AbstractVehicleEntity v = spawn(world, id, new Vec3d(x + 0.5, WATER_TOP, 0.5));
+					fillFuel(v);
+					fleet.add(v);
+				});
+			}
+			report.addProperty("vehicles", fleet.size());
+		});
+		wait("carriers/tiles", 200, null);
+		then("carriers/board", () -> {
+			int tiles = 0;
+			for (Entity e : world.iterateEntities()) {
+				if (e instanceof com.example.tudursvehiclemod.entity.CarrierRunwayPlatformEntity) {
+					tiles++;
+				}
+			}
+			report.addProperty("tiles", tiles);
+			for (AbstractVehicleEntity v : fleet) {
+				var runway = v.getDefinition().runways().get(0);
+				double midZ = (runway.startZ() + runway.endZ()) / 2.0;
+				for (int i = 0; i < 6; i++) {
+					// Three zombies walking about (their every step asks for the collision shapes around them), three armor stands that should simply stay where they are on the deck.
+					Entity z = i < 3 ? EntityType.ZOMBIE.create(world, SpawnReason.COMMAND) : EntityType.ARMOR_STAND.create(world, SpawnReason.COMMAND);
+					if (z instanceof ZombieEntity zombie) {
+						zombie.setPersistent();
+					}
+					z.refreshPositionAndAngles(v.getX() + runway.centerX() - 3 + (i % 3) * 3, v.getY() + runway.heightY() + 1.0, v.getZ() + midZ - 6 + (i / 3) * 12, 0f, 0f);
+					world.spawnEntity(z);
+					riders.add(z);
+				}
+			}
+		});
+		wait("carriers/settle", 60, null);
+		then("carriers/begin", () -> {
+			// Under way only once everything has settled on the deck.
+			for (AbstractVehicleEntity v : fleet) {
+					if (sail) {
+						// Driven along its lane at 0.3 blocks/tick, swinging 8 degrees either way: moving and turning, as a carrier under way does.
+						final double startX = v.getX(), startY = v.getY(), startZ = v.getZ();
+						final int[] age = {0};
+						v.tudursvehiclemod$setExternalMotionController(vehicle -> {
+							int a = age[0]++;
+							double yaw = Math.toRadians(8.0 * Math.sin(a / 40.0));
+							org.joml.Quaternionf q = new org.joml.Quaternionf().rotationY((float) -yaw);
+							vehicle.tudursvehiclemod$applyExternalPose(new Vec3d(startX + 3.0 * Math.sin(a / 80.0), startY, startZ + 0.3 * a), q);
+							return true;
+						});
+					}
+			}
+			tickDurations = new ArrayList<>();
+		});
+		wait("carriers/run", ticks, null);
+		then("carriers/record", () -> {
+			List<Long> d = tickDurations;
+			tickDurations = null;
+			long[] sorted = d.stream().mapToLong(Long::longValue).sorted().toArray();
+			double sum = 0;
+			for (long v : sorted) {
+				sum += v;
+			}
+			report.addProperty("ticks", sorted.length);
+			report.addProperty("meanMs", round(sum / sorted.length / 1.0e6));
+			report.addProperty("p50Ms", round(sorted[sorted.length / 2] / 1.0e6));
+			report.addProperty("p95Ms", round(sorted[(int) (sorted.length * 0.95)] / 1.0e6));
+			report.addProperty("maxMs", round(sorted[sorted.length - 1] / 1.0e6));
+			int onDeck = 0;
+			double travelled = 0;
+			for (AbstractVehicleEntity v : fleet) {
+				travelled += Math.abs(v.getZ() - 0.5);
+			}
+			for (Entity e : riders) {
+				AbstractVehicleEntity nearest = null;
+				for (AbstractVehicleEntity v : fleet) {
+					if (nearest == null || v.squaredDistanceTo(e) < nearest.squaredDistanceTo(e)) {
+						nearest = v;
+					}
+				}
+				if (!e.isRemoved() && nearest != null) {
+					double deckY = nearest.getY() + nearest.getDefinition().runways().get(0).heightY();
+					if (Math.abs(e.getY() - deckY) < 1.5) {
+						onDeck++;
+					}
+				}
+			}
+			int standsOnDeck = 0, stands = 0;
+			for (Entity e : riders) {
+				if (!(e instanceof net.minecraft.entity.decoration.ArmorStandEntity)) {
+					continue;
+				}
+				stands++;
+				for (AbstractVehicleEntity v : fleet) {
+					var runway = v.getDefinition().runways().get(0);
+					double deckY = v.getY() + runway.heightY();
+					double dx = e.getX() - v.getX(), dz = e.getZ() - v.getZ();
+					if (!e.isRemoved() && Math.abs(e.getY() - deckY) < 0.25 && dx * dx + dz * dz < 60 * 60) {
+						standsOnDeck++;
+						break;
+					}
+				}
+			}
+			report.addProperty("standsOnDeck", standsOnDeck + "/" + stands);
+			JsonArray where = new JsonArray();
+			for (int i = 0; i < riders.size() && i < 12; i++) {
+				Entity e = riders.get(i);
+				AbstractVehicleEntity v = fleet.get(i / 6);
+				where.add(Registries.ENTITY_TYPE.getId(e.getType()).getPath() + " dy=" + round(e.getY() - v.getY() - v.getDefinition().runways().get(0).heightY())
+						+ " dx=" + round(e.getX() - v.getX()) + " dz=" + round(e.getZ() - v.getZ()));
+			}
+			report.add("where", where);
+			report.addProperty("ridersOnDeck", onDeck);
+			report.addProperty("riders", riders.size());
+			report.addProperty("meanTravel", round(travelled / Math.max(1, fleet.size())));
+		});
+		then("write", this::write);
+	}
+
 	// ------------------------------------------------------------------ runway deck
 	/**
 	 * For every definition with a runway: things dropped onto the deck (an armor stand, a zombie, a boat, an item) must come
@@ -629,6 +798,87 @@ public class TvmTest implements ModInitializer {
 			o.add(Registries.ENTITY_TYPE.getId(e.getType()).getPath(), c);
 		}
 		return o;
+	}
+
+	// ------------------------------------------------------------------ deck walk (client)
+	/** The carrier of the deck-walk test (read by TvmTestClient in singleplayer). */
+	static volatile AbstractVehicleEntity deckShip;
+	static int deckServerOn, deckServerOff;
+	static net.minecraft.server.network.ServerPlayerEntity deckPlayer;
+
+	java.nio.file.Path srvDir() {
+		return server.getRunDirectory();
+	}
+
+	/** Server side of the deck-walk test: whether the server has the player on the deck, every tick. */
+	void deckServerTick() {
+		AbstractVehicleEntity ship = deckShip;
+		net.minecraft.server.network.ServerPlayerEntity player = deckPlayer;
+		if (ship == null || player == null || ship.isRemoved() || player.isRemoved()) {
+			return;
+		}
+		double dy = player.getY() - (ship.getY() + ship.getDefinition().runways().get(0).heightY());
+		if (Math.abs(dy) < 0.3) {
+			deckServerOn++;
+		} else {
+			deckServerOff++;
+		}
+	}
+
+	/** Deck-walk test, driven by TvmTestClient: "setup" puts a carrier in a pool and the player on its deck, "sail" sets it under way (as /tvmtest carriers sail does). */
+	void deckwalk(net.minecraft.server.network.ServerPlayerEntity player, String step) {
+		ServerWorld world = (ServerWorld) player.getEntityWorld();
+		if (step.equals("setup")) {
+			Identifier id = null;
+			for (Identifier candidate : VehicleRegistry.getAll().keySet()) {
+				VehicleDefinition def = VehicleRegistry.get(candidate).orElseThrow();
+				if (!def.runways().isEmpty() && isWater(def) && (id == null || candidate.toString().compareTo(id.toString()) < 0)) {
+					id = candidate;
+				}
+			}
+			final int x = 6000;
+			for (int cx = (x - 40) >> 4; cx <= (x + 40) >> 4; cx++) for (int cz = -4; cz <= 22; cz++) force(world, cx, cz, true);
+			for (int px = x - 20; px < x + 20; px++) for (int pz = -40; pz <= 330; pz++) for (int y = WATER_TOP - 11; y <= WATER_TOP - 1; y++) {
+				boolean wall = y == WATER_TOP - 11 || px == x - 20 || px == x + 19 || pz == -40 || pz == 330;
+				world.setBlockState(new BlockPos(px, y, pz), wall ? Blocks.STONE.getDefaultState() : Blocks.WATER.getDefaultState(), Block.NOTIFY_LISTENERS | Block.FORCE_STATE);
+			}
+			AbstractVehicleEntity v = spawn(world, id, new Vec3d(x + 0.5, WATER_TOP, 0.5));
+			fillFuel(v);
+			deckShip = v;
+			deckPlayer = player;
+			this.server = player.getEntityWorld().getServer();
+			var runway = v.getDefinition().runways().get(0);
+			double midZ = (runway.startZ() + runway.endZ()) / 2.0;
+			player.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+			// Next to the ship for now: boarded with "board" once the deck is there (the 1.1.2 tiles took a while to appear).
+			player.teleport(world, v.getX() + 18, WATER_TOP + 2, v.getZ(), java.util.Set.of(), 0f, 10f, true);
+			player.getAbilities().flying = false;
+			LOG.info("[tvmtest] deckwalk on {}", id);
+		} else if (step.equals("board") && deckShip != null) {
+			AbstractVehicleEntity v = deckShip;
+			var runway = v.getDefinition().runways().get(0);
+			double midZ = (runway.startZ() + runway.endZ()) / 2.0;
+			player.teleport(world, v.getX() + runway.centerX(), v.getY() + runway.heightY() + 0.5, v.getZ() + midZ - 10, java.util.Set.of(), 0f, 10f, true);
+		} else if (step.equals("report")) {
+			JsonObject r = new JsonObject();
+			r.addProperty("serverTicksOnDeck", deckServerOn);
+			r.addProperty("serverTicksOffDeck", deckServerOff);
+			try {
+				java.nio.file.Files.writeString(srvDir().resolve("tvmtest-deckwalk-server.json"), new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(r));
+			} catch (java.io.IOException e) {
+				LOG.error("[tvmtest] deckwalk server report", e);
+			}
+		} else if (step.equals("sail") && deckShip != null) {
+			final double startX = deckShip.getX(), startY = deckShip.getY(), startZ = deckShip.getZ();
+			final int[] age = {0};
+			deckShip.tudursvehiclemod$setExternalMotionController(vehicle -> {
+				int a = age[0]++;
+				double yaw = Math.toRadians(8.0 * Math.sin(a / 40.0));
+				org.joml.Quaternionf q = new org.joml.Quaternionf().rotationY((float) -yaw);
+				vehicle.tudursvehiclemod$applyExternalPose(new Vec3d(startX + 3.0 * Math.sin(a / 80.0), startY, startZ + 0.3 * a), q);
+				return true;
+			});
+		}
 	}
 
 	// ------------------------------------------------------------------ client gallery

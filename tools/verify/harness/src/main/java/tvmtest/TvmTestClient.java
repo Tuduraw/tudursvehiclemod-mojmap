@@ -19,10 +19,134 @@ public class TvmTestClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+		if (System.getProperty("tvmtest.deck") != null) {
+			ClientTickEvents.END_CLIENT_TICK.register(this::deckTick);
+			return;
+		}
 		if (System.getProperty("tvmtest.gallery") == null) {
 			return;
 		}
 		ClientTickEvents.END_CLIENT_TICK.register(this::tick);
+	}
+
+	// ------------------------------------------------------------------ deck walk
+	int deckTicks;
+	final com.google.gson.JsonObject deckReport = new com.google.gson.JsonObject();
+	final com.google.gson.JsonArray deckSamples = new com.google.gson.JsonArray();
+	double deckMinDy = Double.POSITIVE_INFINITY, deckMaxDy = Double.NEGATIVE_INFINITY;
+	int deckOnTicks, deckOffTicks, deckServerOffTicks;
+	double deckMaxClientServerGap;
+
+	/**
+	 * Deck-walk test (-Dtvmtest.deck=1): the player is put on a carrier's deck (/tvmtest deckwalk setup), stands, walks
+	 * forward, the carrier gets under way (/tvmtest deckwalk sail), the player walks again while it sails, then stands.
+	 * Every tick records the player's height above the deck as this client sees it, and as the server does; writes
+	 * tvmtest-deckwalk.json and quits.
+	 */
+	boolean deckJoined;
+	double walkStartZ;
+
+	void deckTick(MinecraftClient client) {
+		if (client.player == null || client.world == null) {
+			if (deckJoined && deckTicks < 560) {
+				// Kicked or disconnected before the end.
+				deckReport.addProperty("disconnectedAtTick", deckTicks);
+				deckTicks = 559;
+				writeDeckReport(client);
+			}
+			return;
+		}
+		deckJoined = true;
+		deckTicks++;
+		int t = deckTicks;
+		if (t == 100) {
+			client.player.networkHandler.sendChatCommand("tvmtest deckwalk setup");
+		}
+		if (t == 170) {
+			client.player.networkHandler.sendChatCommand("tvmtest deckwalk board");
+		}
+		if (t == 220) {
+			press(client, client.options.forwardKey, true);
+		} else if (t == 250) {
+			press(client, client.options.forwardKey, false);
+		} else if (t == 300) {
+			client.player.networkHandler.sendChatCommand("tvmtest deckwalk sail");
+		} else if (t == 360) {
+			press(client, client.options.forwardKey, true);
+		} else if (t == 400) {
+			press(client, client.options.forwardKey, false);
+		} else if (t == 380) {
+			ScreenshotRecorder.saveScreenshot(client.runDirectory, "tvm_deck_walk.png", client.getFramebuffer(), 1, text -> { });
+		}
+		if (t >= 200 && t < 560) {
+			// The carrier as this client shows it: the nearest vehicle with a runway (works on a dedicated server too).
+			com.example.tudursvehiclemod.entity.AbstractVehicleEntity clientShip = null;
+			for (net.minecraft.entity.Entity e : client.world.getEntities()) {
+				if (e instanceof com.example.tudursvehiclemod.entity.AbstractVehicleEntity v && !v.getDefinition().runways().isEmpty()
+						&& (clientShip == null || v.squaredDistanceTo(client.player) < clientShip.squaredDistanceTo(client.player))) {
+					clientShip = v;
+				}
+			}
+			if (clientShip != null) {
+				double deckY = clientShip.getY() + clientShip.getDefinition().runways().get(0).heightY();
+				double dy = client.player.getY() - deckY;
+				deckMinDy = Math.min(deckMinDy, dy);
+				deckMaxDy = Math.max(deckMaxDy, dy);
+				if (Math.abs(dy) < 0.05 && client.player.isOnGround()) {
+					deckOnTicks++;
+				} else {
+					deckOffTicks++;
+				}
+				double relZNow = client.player.getZ() - clientShip.getZ();
+				if (t == 220 || t == 360) {
+					walkStartZ = relZNow;
+				} else if (t == 250) {
+					deckReport.addProperty("walkParkedBlocks", Math.round((relZNow - walkStartZ) * 100) / 100.0);
+				} else if (t == 400) {
+					deckReport.addProperty("walkSailingBlocks", Math.round((relZNow - walkStartZ) * 100) / 100.0);
+				}
+				net.minecraft.server.network.ServerPlayerEntity serverPlayer = client.getServer() == null || TvmTest.deckShip == null ? null
+						: client.getServer().getPlayerManager().getPlayer(client.player.getUuid());
+				if (serverPlayer != null) {
+					double serverDy = serverPlayer.getY() - (TvmTest.deckShip.getY() + TvmTest.deckShip.getDefinition().runways().get(0).heightY());
+					if (Math.abs(serverDy) > 0.05) {
+						deckServerOffTicks++;
+					}
+					deckMaxClientServerGap = Math.max(deckMaxClientServerGap, serverPlayer.getEntityPos().distanceTo(client.player.getEntityPos()));
+				}
+				if (t % 10 == 0) {
+					deckSamples.add(t + ": dy=" + Math.round(dy * 1000) / 1000.0 + " onGround=" + client.player.isOnGround()
+							+ " shipZ=" + Math.round(clientShip.getZ() * 10) / 10.0 + " relZ=" + Math.round((client.player.getZ() - clientShip.getZ()) * 100) / 100.0);
+				}
+			}
+		}
+		if (t == 555) {
+			client.player.networkHandler.sendChatCommand("tvmtest deckwalk report");
+		}
+		if (t == 560) {
+			writeDeckReport(client);
+		}
+	}
+
+	void writeDeckReport(MinecraftClient client) {
+		{
+			deckReport.addProperty("runwayTiles", Boolean.getBoolean("tvm.runwayTiles"));
+			deckReport.addProperty("minDy", deckMinDy);
+			deckReport.addProperty("maxDy", deckMaxDy);
+			deckReport.addProperty("ticksOnDeck", deckOnTicks);
+			deckReport.addProperty("ticksOffDeck", deckOffTicks);
+			deckReport.addProperty("serverTicksOffDeck", deckServerOffTicks);
+			deckReport.addProperty("maxClientServerGap", deckMaxClientServerGap);
+			deckReport.add("samples", deckSamples);
+			try {
+				java.nio.file.Files.writeString(client.runDirectory.toPath().resolve("tvmtest-deckwalk.json"),
+						new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(deckReport));
+			} catch (java.io.IOException e) {
+				TvmTest.LOG.error("[tvmtest] deckwalk report", e);
+			}
+			TvmTest.LOG.info("[tvmtest] DECKWALK DONE");
+			client.scheduleStop();
+		}
 	}
 
 	void tick(MinecraftClient client) {

@@ -85,6 +85,9 @@ LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" \
 | `/tvmtest gallery` / `view <i>` / `fire <i>` / `ride <i>` / `rideend <i>` | クライアント用 |
 | `/tvmtest probe` | 搭乗・発射の簡易確認 |
 | `/tvmtest stress <名前> <セット数> <tick数> [fire\|manned\|idle]` | 負荷の計測(下記) |
+| `/tvmtest carriers <名前> <隻数> <tick数> park\|sail` | 空母(滑走路のある艦)の負荷の計測(下記) |
+| `/tvmtest deck <名前>` | 甲板に防具立て・ゾンビ・ボート・豚を落とし、静止位置を記録 |
+| `/tvmtest deckwalk setup\|board\|sail\|report` | クライアントの甲板歩行テスト用(下記) |
 
 ## 負荷の計測
 
@@ -99,6 +102,20 @@ LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" \
 - 前回の機体が残っていると結果が変わるため、毎回ワールド(`world/`)を消してから実行してください
 - `fire`は乱数の影響が大きいので、複数回実行して比べてください
 - どこが重いかは、サーバーを`-XX:StartFlightRecording=filename=x.jfr,settings=profile`付きで起動し、`jfr print --events jdk.ExecutionSample x.jfr`の`Server thread`の標本を集計すると分かります
+
+## 空母の負荷計測
+
+`/tvmtest carriers <名前> <隻数> <tick数> park|sail`は、滑走路を持つ艦の定義ごとに`隻数`隻を、それぞれ専用の水路に浮かべ、甲板にゾンビ3体・防具立て3体を乗せて計測します。`sail`では`ExternalMotionController`で各艦を0.3ブロック/tickで前進させ、左右8°で振らせます。結果には1tickの所要時間と、甲板に残った防具立ての数(`standsOnDeck`)が入ります。
+
+## 甲板歩行テスト(クライアント)
+
+`-Dtvmtest.deck=1`を付けてクライアントを起動すると、空母の甲板の上で、停泊中に30tick、航行中に40tick前進し、プレイヤーの甲板からの高さと歩いた距離(`walkParkedBlocks`・`walkSailingBlocks`)を`tvmtest-deckwalk.json`に書き出して終了します。
+
+- 環境変数`TVM_SERVER=host:port`を付けると、シングルプレイの代わりにそのサーバーへ接続します。専用サーバーでは移動の検証(`moved wrongly`など)が有効になるため、甲板の運搬はこちらで確認してください
+- 専用サーバー側では、`Tester`(オフラインUUID)をOPにし、サーバーとクライアントに同じパックを入れておく必要があります
+- サーバー側の記録は`tvmtest-deckwalk-server.json`に出力されます
+
+`scripts/run_server.sh`は、環境変数`JVMARGS`の内容をサーバーのJVM引数に加えます。
 
 ## 注意
 

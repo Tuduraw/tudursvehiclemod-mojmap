@@ -132,16 +132,6 @@ public class ServerConfigMenuScreen extends Screen {
 				}));
 
 		entries.add(new ConfigEntry(
-				Component.translatable("gui.tudursvehiclemod.server_config.carrier_runway_width",
-						String.format(java.util.Locale.ROOT, "%.1f", config.carrierRunwayExpectedWidth)),
-				"gui.tudursvehiclemod.server_config.carrier_runway_width.tooltip",
-				// 10 through 60 in steps of 5 - comfortably spans a small runway to a very large one, without an impractically long cycle to reach either end.
-				() -> {
-					double next = config.carrierRunwayExpectedWidth + 5.0;
-					config.carrierRunwayExpectedWidth = next > 60.0 ? 10.0 : next;
-				}));
-
-		entries.add(new ConfigEntry(
 				tudursvehiclemod$projectileChunkLimitLabel(config),
 				"gui.tudursvehiclemod.server_config.projectile_chunk_limit.tooltip",
 				// 0 (disabled) then 50 through 1000 in steps of 50 - 0 is called out as its own distinct, meaningful step (not merely "the bottom of a numeric range") since it disables the whole feature outright, per that field's own doc.

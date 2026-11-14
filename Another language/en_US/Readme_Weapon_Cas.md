@@ -297,7 +297,7 @@ regardless of `entity_type`.
 **This weapon and a runway (`runways`) aren't required by each other.**
 This weapon works fine on a mothership with no runway defined at all
 (a returning aircraft is recovered by position check alone - actually
-landing on a runway tile isn't required). Conversely, a runway can be
+landing on the runway isn't required). Conversely, a runway can be
 used purely as a deck with no weapon of this type set at all. Combining
 both, so a launched aircraft actually lands on the runway, is the
 originally-intended basic form of a carrier.

@@ -82,11 +82,9 @@ public final class WeaponTargeting {
 		Entity best = null;
 		double bestDot = minDot;
 		// This project's own vehicles (AbstractVehicleEntity) extend Entity directly, NOT LivingEntity - the original LivingEntity-only filter meant every aircraft/helicopter/tank in the game was silently invisible to this search, leaving only players and mobs lockable. isDestroyed() (rather than LivingEntity's own isAlive()) is the correct "still a valid target" check for a vehicle - a destroyed hull sitting there sinking/burning shouldn't be lockable.
-		// CarrierRunwayPlatformEntity (a runway's own invisible support tile) extends PathAwareEntity - a genuine LivingEntity/MobEntity - so it was unintentionally matching the plain LivingEntity branch below and showing up as a lockable target, despite being an implementation detail with no meaningful existence as an actual target. Excluded explicitly.
 		for (Entity candidate : world.getEntities(shooter, searchBox,
 				e -> (e instanceof LivingEntity living && living.isAlive()
 						|| e instanceof AbstractVehicleEntity vehicleCandidate && !vehicleCandidate.tudursvehiclemod$isDestroyed())
-						&& !(e instanceof CarrierRunwayPlatformEntity)
 						// Never a vehicle's crew - the shooter's own back-seater or dummy pilot, or anyone aboard another vehicle (lock the vehicle itself instead): a missile sent after a passenger chases the seat, not the thing that can be hit.
 						&& !(e.getVehicle() instanceof AbstractVehicleEntity)
 						&& (excluded == null || !excluded.test(e)))) {

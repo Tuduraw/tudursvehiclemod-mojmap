@@ -9,7 +9,8 @@
     "ProjectileVehicleHitMixin",
     "ExplosionKnockbackMixin",
     "RemoteControlLogoutMixin",
-    "ProjectileFinalSegmentMixin"
+    "ProjectileFinalSegmentMixin",
+    "RunwayDeckCollisionMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -472,6 +472,8 @@ public class VehicleModClient implements ClientModInitializer {
 				category
 		));
 
+		// The local player moves with the runway deck it stands on (see RunwayDeckCarry).
+		ClientTickEvents.END_CLIENT_TICK.register(RunwayDeckCarry::onEndClientTick);
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			// ParachuteDeployKey, a dedicated, independently rebindable key binding (default Space, matching this feature's own original convenience) - deploys an equipped parachute while genuinely falling. Not riding any vehicle at all is deliberately part of this check - a parachute is an on-foot feature, and client.player.getVehicle() == null also means this can never fire spuriously while, say, riding out of an aircraft's own seat mid-ejection.
 			// Every press is taken off the key's counter, riding or not: a key's presses pile up for as long as nobody reads them, and this one (Space by default) used to collect them while riding - the eject hold, the jump key - and deploy the moment the player was on foot.

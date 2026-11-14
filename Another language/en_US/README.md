@@ -95,7 +95,7 @@ RunwayDefinition                     ← the runway rectangle declared on the ca
                                         (settable on any vehicle type)
 CarrierAircraftConfig                ← config for one WeaponType.CARRIER weapon (carrier aircraft, launch/return
                                         route, catapult, ammo-conversion radius, etc.)
-CarrierRunwayPlatformEntity          ← the invisible floor tiles that realize a runway (follow the carrier every tick)
+RunwayDeckCollision                  ← gives runway floors to the game's collision checks (no entities placed)
 
 item.DroneControlStickItem           ← a stick you right-click a vehicle with to register its UUID (UAV/TargetDrone)
 block.StationBlockEntity             ← the UAV remote piloting station
@@ -745,11 +745,15 @@ carrying vehicle's own JSON defines a rectangular runway on its deck:
   defines a rectangular runway centered on `center_x`, `width` blocks
   wide, spanning `start_z` to `end_z` (either order), at `height_y`
   blocks above the vehicle's own position
-- Realized as a set of `CarrierRunwayPlatformEntity` (invisible floor
-  tiles) covering the whole area, so a carrier aircraft's own landing
-  gear, stall detection, and collision are all treated as if actual
-  blocks were present there. Tile size is derived automatically from the
-  `carrierRunwayExpectedWidth` server setting (default 30.0)
+- The runway area is added to the game's collision checks as a floor (a
+  layer of one-block-deep boxes: 6-block squares on a runway at least 6
+  blocks wide, 1-block squares on a narrower one). A carrier aircraft's
+  landing gear and stall detection, and players and mobs walking on it,
+  all treat it as if actual blocks were there. The floor isn't made of
+  entities, so nothing is spawned, synced or saved for it
+  - The invisible floor tiles (`CarrierRunwayPlatformEntity`) used up to
+    1.1.2 are gone. Tiles left in an old world remove themselves as soon
+    as they load
 - A vehicle with no runway defined never uses this feature at all
   (behaves as an ordinary vehicle)
 - Use the `runways` array if you want several independent runways - for
@@ -768,8 +772,8 @@ fields, independent of any particular `toggle_parts` name. If you want it
 to sync with a visible hatch animation, match the numbers on both sides
 yourself on the addon pack's own side - there's no automatic linkage.
 
-- `hatch_gated` (bool, default `false`): when `true`, this runway (and
-  its own tiles) only exists while a hatch is open. Intended for a
+- `hatch_gated` (bool, default `false`): when `true`, this runway only
+  exists while a hatch is open. Intended for a
   rotating-type hatch (a landing craft's own bow ramp, say - one whose
   partial-open progress can't be tracked). A simple on/off toggle, with
   no partial-open state considered at all
@@ -797,7 +801,7 @@ and fly it along a configured route. **This works regardless of whether
 a runway (`runways`) is defined** - a returning carrier aircraft is
 recovered by the position check described by `CarrierLandingToAmmoRadius`
 below, plus a check for having slowed down enough, not by whether it has
-actually touched down on a runway tile.
+actually touched down on the runway.
 
 Main fields:
 
@@ -847,17 +851,18 @@ Main fields:
   inside a `CarrierLandingToAmmoRadius`/`CarrierRecoveryPoint` recovery
   zone, is automatically converted into this weapon's own ammo (+1
   round). This check is purely position/velocity based and does not
-  require actually touching a runway tile (it works exactly the same way
+  require actually touching the runway (it works exactly the same way
   for a carrying vehicle with no runway defined at all)
 
 ### Following the mothership
 
-Any entity present on the runway (the runway tiles themselves, carrier
-aircraft, other vehicles, players, etc.) follows the carrier's own
-movement and turning every tick. A player follows via a difference-based
-position update through `requestTeleport()`; every other entity simply
-has the carrier's own movement since the previous tick added directly to
-its own position. For an unmanned vehicle, the client never recomputes
+Any entity present on the runway (carrier aircraft, other vehicles,
+players, mobs, etc.) follows the carrier's own movement and turning every
+tick. A player is moved by its own client, which adds the deck's movement
+to the player's own (the server doesn't teleport it, so a player can walk
+normally on a deck under way); every other entity has the carrier's own
+movement since the previous tick added directly to its position by the
+server. For an unmanned vehicle, the client never recomputes
 its own physics (velocity) independently - it only updates position based
 on the velocity the server has already computed and synced. Each of
 client and server redoing physics independently would cause the values
@@ -1213,6 +1218,17 @@ behavior is reversed from ordinary free look**: a vehicle with
 returns to the normal fixed view while the release key is held.
 
 ---
+
+## Known incompatibilities
+
+- **Lithium**: Lithium's collision optimization
+  (`mixin.entity.collisions.movement`) gathers the collision shapes for
+  entity movement its own way, so runway floors (carriers and the like -
+  see "Runway" above) aren't part of them, and players and carrier
+  aircraft fall through. Not supported at present. Turning that option off
+  in Lithium's config file (`config/lithium.properties`:
+  `mixin.entity.collisions.movement=false`) is expected to work around it
+  (not tested)
 
 ## Building
 

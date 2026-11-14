@@ -6,7 +6,7 @@ R="python3 $(cd "$(dirname "$0")" && pwd)/rcon.py --port $PORT"
 cd "$D"
 waitlog() { # pattern, timeout seconds
   local t=0; until grep -q "$1" logs/latest.log 2>/dev/null; do sleep 3; t=$((t+3)); if [ $t -gt $2 ]; then echo "TIMEOUT waiting for $1"; return 1; fi; if ! kill -0 $PID 2>/dev/null; then echo "SERVER DIED"; return 1; fi; done; }
-start() { rm -f logs/latest.log; java -Xmx3G -jar fabric-server-launch.jar nogui > console-$1.log 2>&1 & PID=$!; waitlog 'Done (' 900 || exit 1; [ -f server.jar ] && [ ! -f ${VT:-$(cd "$(dirname "$0")" && pwd)/../work}/cache/server.jar ] && cp server.jar ${VT:-$(cd "$(dirname "$0")" && pwd)/../work}/cache/; }
+start() { rm -f logs/latest.log; java -Xmx3G ${JVMARGS} -jar fabric-server-launch.jar nogui > console-$1.log 2>&1 & PID=$!; waitlog 'Done (' 900 || exit 1; [ -f server.jar ] && [ ! -f ${VT:-$(cd "$(dirname "$0")" && pwd)/../work}/cache/server.jar ] && cp server.jar ${VT:-$(cd "$(dirname "$0")" && pwd)/../work}/cache/; }
 stop() { $R "save-all flush" "stop" >/dev/null; wait $PID; }
 
 start 1

@@ -34,8 +34,7 @@ public abstract class ProjectileVehicleHitMixin {
 
 	@Inject(method = "canHitEntity(Lnet/minecraft/world/entity/Entity;)Z", at = @At("HEAD"), cancellable = true)
 	private void tudursvehiclemod$excludeVehicles(Entity entity, CallbackInfoReturnable<Boolean> cir) {
-		// Runway tiles (CarrierRunwayPlatformEntity) too: they're invisible deck supports, but as living entities they stopped every projectile that came down on a runway - the shell was spent on the tile and the vehicle carrying the runway took nothing. Passing through, it reaches the vehicle's mesh (or the block below) as it should.
-		if (entity instanceof AbstractVehicleEntity || entity instanceof com.example.tudursvehiclemod.entity.CarrierRunwayPlatformEntity) {
+		if (entity instanceof AbstractVehicleEntity) {
 			cir.setReturnValue(false);
 		}
 	}

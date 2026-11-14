@@ -1095,10 +1095,10 @@ of a carrier (see the end of this section for details).
   of objects, supports multiple decks)
 - **Description**: Defines a runway anywhere on this vehicle's own body,
   for other vehicles to take off from/land on/park on. Set directly on
-  this vehicle's own JSON. Under the hood, an invisible set of support
-  tiles (`CarrierRunwayPlatformEntity`) is laid across the whole area,
-  and another vehicle's own landing gear, stall detection, and collision
-  are all treated as if actual blocks were present there. If you want
+  this vehicle's own JSON. The whole area joins the game's collision
+  checks as a floor, so another vehicle's landing gear and stall
+  detection, and players and mobs walking on it, all treat it as if
+  actual blocks were present there. If you want
   several independent runways - multiple decks, an elevator, etc. - use
   the `runways` array (if both `runway` and `runways` are set at once,
   both take effect).
@@ -1136,9 +1136,10 @@ Fields for each element:
 - **Example**: `"start_z": -105.0, "end_z": 90.0`
 
 All coordinates are relative to this vehicle's own entity position, and
-rotate together with the vehicle's own current heading (yaw). The actual
-tile size is computed automatically from the server setting
-`carrierRunwayExpectedWidth`.
+rotate together with the vehicle's own current heading (yaw). The runway
+floor joins the collision checks as a layer of one-block-deep boxes
+(6-block squares on a runway at least 6 blocks wide, 1-block squares on a
+narrower one).
 
 ### Hatch-linked runway (optional fields)
 

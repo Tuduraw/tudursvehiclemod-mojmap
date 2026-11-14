@@ -248,8 +248,6 @@
   "gui.tudursvehiclemod.server_config.destroyed_despawn_enabled.tooltip": "(立即生效) (true / false)\n已损毁的载具将在下方计时结束后自动消失,而不是作为残骸永远留在世界中。完全不影响仍可正常驾驶的载具。",
   "gui.tudursvehiclemod.server_config.destroyed_despawn_seconds": "已损毁载具消失时间: %s 秒",
   "gui.tudursvehiclemod.server_config.destroyed_despawn_seconds.tooltip": "(立即生效) (30 - 1800秒)\n已损毁的载具在消失前留在世界中的时间。仅在「已损毁载具消失」开启时有意义。",
-  "gui.tudursvehiclemod.server_config.carrier_runway_width": "航母跑道预期宽度: %s",
-  "gui.tudursvehiclemod.server_config.carrier_runway_width.tooltip": "(立即生效,仅影响新生成的跑道格 - 已存在的格子将保持已固定的尺寸) (10 - 60格)\n在模组加载阶段(此时尚不知道实际载具文件中的跑道宽度)用于确定航母跑道支撑格尺寸的预期宽度。若实际跑道宽度与默认值(30)不同,请调整为实际值。",
   "gui.tudursvehiclemod.server_config.projectile_chunk_limit": "弹药区块加载上限: %s",
   "gui.tudursvehiclemod.server_config.projectile_chunk_limit.disabled": "弹药区块加载上限: 已禁用",
   "gui.tudursvehiclemod.server_config.projectile_chunk_limit.tooltip": "(立即生效) (已禁用 / 50 - 1000)\n设置飞行中的弹药在整个服务器范围内强制加载的区块总数上限,使其即使远离玩家也能持续运作直至命中。超出上限时,将优先释放发射时间最早的弹药所占用的区块。设为禁用(0)则等同于加入此功能前的状态,弹药不再强制加载任何区块。不影响CAS/航母飞机或其他常驻加载功能,这些仍可通过对应的武器/载具文件进行调整。",

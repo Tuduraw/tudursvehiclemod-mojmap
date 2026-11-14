@@ -1572,7 +1572,6 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		for (Entity candidate : this.level().getEntities(shooter, searchBox,
 				e -> (e instanceof net.minecraft.world.entity.LivingEntity living && living.isAlive()
 						|| e instanceof AbstractVehicleEntity vehicleCandidate && !vehicleCandidate.tudursvehiclemod$isDestroyed())
-						&& !(e instanceof com.example.tudursvehiclemod.entity.CarrierRunwayPlatformEntity)
 						&& (roster == null || !roster.contains(e.getUUID()))
 						// No vehicle's crew (see WeaponTargeting.findLockOnTarget()).
 						&& !(e.getVehicle() instanceof AbstractVehicleEntity)
@@ -3272,7 +3271,6 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		float damage = (float) (preMoveSpeed * ENTITY_CRASH_DAMAGE_PER_SPEED);
 		java.util.List<Entity> candidates = this.level().getEntities(this, this.getBoundingBox().inflate(0.1),
 				e -> (e instanceof LivingEntity || e instanceof AbstractVehicleEntity)
-						&& !(e instanceof com.example.tudursvehiclemod.entity.CarrierRunwayPlatformEntity)
 						&& e.isAlive() && !this.hasPassenger(e) && !this.tudursvehiclemod$isRecentlyDismounted(e));
 		for (Entity other : candidates) {
 			boolean touching = other instanceof AbstractVehicleEntity otherVehicle

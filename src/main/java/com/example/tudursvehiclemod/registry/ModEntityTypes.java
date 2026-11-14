@@ -38,13 +38,7 @@ public class ModEntityTypes {
 	/** The unseen gun crew of a Fire Support Center - see FireSupportGunnerEntity's own doc. */
 	public static EntityType<com.example.tudursvehiclemod.entity.FireSupportGunnerEntity> FIRE_SUPPORT_GUNNER;
 
-	/** Since EntityType dimensions are fixed once at registration (LivingEntity's own getDimensions() is confirmed final - see CarrierRunwayPlatformEntity's own doc), no single entity TYPE can adapt to a runway it hasn't been told about yet. Registering several DISCRETE size variants instead lets tudursvehiclemod$selectCarrierRunwayTileType() (AbstractVehicleEntity) choose, per runway, whichever registered size best fits THAT runway's own width - a coarser approximation of "size follows width" than truly continuous scaling, but a close one in practice.
-	 *
-	 * All share the exact same CarrierRunwayPlatformEntity class and (per CarrierRunwayPlatformEntityRenderer's own doc) the exact same no-op renderer - registering more variants carries no rendering cost or behavioral difference beyond the EntityType's own registered size, so there's no real downside to having several.
-	 *
-	 * The ORIGINAL "carrier_runway_platform" id is kept exactly as it always was (still the largest size, still CARRIER_RUNWAY_PLATFORM itself) rather than renamed into this array - Minecraft embeds an entity's own registered type id in its saved NBT, so renaming it would leave any tile already persisted in an existing world unresolvable on reload. Each SMALLER size gets its own new, additional id instead; nothing about an existing save changes at all.
-	 *
-	 * 6.0 was the smallest before this addition - the confirmed-safe size from the border tile's own history (see CARRIER_RUNWAY_BORDER_PLATFORM's own doc for the edge-slip-through issue a LARGER size once caused). 1.0 has been added below that as a genuinely smaller option - unlike 6.0, this specific size has no prior real-world testing history in this project; it fits an extremely narrow runway more precisely, at the cost of needing many more tiles to cover the same length (a long, narrow runway selecting this size could require several hundred tiles - see tudursvehiclemod$selectCarrierRunwayTileType()'s own doc for the safeguard against that). Each step up from there is roughly 1.3x the previous, reaching up to the pre-existing default (30.0 config -> ~14.0 tile) and the original "carrier_runway_platform" id's own historical 28.0-ish upper range. */
+	/** The sizes of the old runway tile types - see register(). */
 	public static final float[] CARRIER_RUNWAY_TILE_SIZES = {1.0f, 6.0f, 8.0f, 11.0f, 14.0f, 18.0f, 23.0f};
 	public static final EntityType<?>[] CARRIER_RUNWAY_PLATFORM_SMALLER_VARIANTS = new EntityType<?>[CARRIER_RUNWAY_TILE_SIZES.length];
 
@@ -75,23 +69,13 @@ public class ModEntityTypes {
 		VEHICLE_PROJECTILE = register("vehicle_projectile", VehicleProjectileEntity::new, 0.25f, 0.25f, 1);
 		VEHICLE_MODEL_PROJECTILE = register("vehicle_model_projectile",
 				com.example.tudursvehiclemod.entity.projectile.VehicleModelProjectileEntity::new, 0.25f, 0.25f, 1);
-		// A flat, wide tile - 1.0 wide (matching the spacing this platform grid is tiled at) x 0.5 tall (thin, floor-like, rather than a tall box) since this only ever needs to offer a top SURFACE to stand on, not occupy meaningful vertical space itself.
-		// Explicitly syncs every tick, same as VEHICLE_PROJECTILE above (for an unrelated reason) - a long default interval before this entity's own very first tracking update reaches a newly-in-range client is one plausible explanation for exactly this "invisible until something else forces a resync" pattern.
-		// DIRECT test confirming push-based collision genuinely requires a LivingEntity (not just isPushable()=true on a bare Entity) - see CarrierRunwayPlatformEntity's own doc for the full reasoning: back to a LivingEntity-based design, which in turn means a FIXED size (LivingEntity's own getDimensions()/calculateBoundingBox() are both confirmed final, no per-instance sizing is possible at all) - tiled in a 2-D grid (both across a runway's own width AND along its own length) by AbstractVehicleEntity's own runway-tiling logic, rather than one row of custom-width tiles.
-		// Tile size derived from VehicleModServerConfig's own carrierRunwayExpectedWidth (3 tiles across width, with overlap) rather than hardcoded.
-		float carrierRunwayTileSize = (float) (com.example.tudursvehiclemod.VehicleModServerConfig.get().carrierRunwayExpectedWidth / 3.0 * 1.4);
-		// trackingTickInterval raised from 1 to 4 to reduce per-tick network sync load for a Carrier with many runway tiles.
-		int carrierRunwayTilePlatformTrackingInterval = 4;
-		CARRIER_RUNWAY_PLATFORM = register("carrier_runway_platform",
-				com.example.tudursvehiclemod.entity.CarrierRunwayPlatformEntity::new, carrierRunwayTileSize, 1.0f, carrierRunwayTilePlatformTrackingInterval);
-		// Per CARRIER_RUNWAY_TILE_SIZES' own doc: additional, smaller size variants under their own NEW ids - the original "carrier_runway_platform" id above is untouched, so an existing save's own already-persisted tiles resolve exactly as they always did.
+		// Runway tiles are no longer created (see CarrierRunwayPlatformEntity); their types stay registered, under the same ids and sizes, so worlds saved with tiles in them still load.
+		CARRIER_RUNWAY_PLATFORM = register("carrier_runway_platform", com.example.tudursvehiclemod.entity.CarrierRunwayPlatformEntity::new, 14.0f, 1.0f, 4);
 		for (int i = 0; i < CARRIER_RUNWAY_TILE_SIZES.length; i++) {
 			CARRIER_RUNWAY_PLATFORM_SMALLER_VARIANTS[i] = register("carrier_runway_platform_small_" + i,
-					com.example.tudursvehiclemod.entity.CarrierRunwayPlatformEntity::new, CARRIER_RUNWAY_TILE_SIZES[i], 1.0f, carrierRunwayTilePlatformTrackingInterval);
+					com.example.tudursvehiclemod.entity.CarrierRunwayPlatformEntity::new, CARRIER_RUNWAY_TILE_SIZES[i], 1.0f, 4);
 		}
-		// Only ever a 1-2 block range, and traced to the large interior tile size above (14.0-ish) apparently exceeding some entity-lookup broad-phase assumption - fixed at 6.0 (the known-safe size confirmed used before the tile-size-increase that introduced this) rather than derived from config, since this is specifically meant to stay small/safe regardless of the interior tile's own size. Same CarrierRunwayPlatformEntity class (its own logic doesn't depend on which EntityType constructed it), spawned only along the runway's own outer edge as a thin border strip - see AbstractVehicleEntity's own tudursvehiclemod$updateCarrierRunwayBorderPlatform() doc.
-		CARRIER_RUNWAY_BORDER_PLATFORM = register("carrier_runway_border_platform",
-				com.example.tudursvehiclemod.entity.CarrierRunwayPlatformEntity::new, 6.0f, 1.0f, carrierRunwayTilePlatformTrackingInterval);
+		CARRIER_RUNWAY_BORDER_PLATFORM = register("carrier_runway_border_platform", com.example.tudursvehiclemod.entity.CarrierRunwayPlatformEntity::new, 6.0f, 1.0f, 4);
 	}
 
 	/** Registers a vehicle entity type for an ADDON mod, under that addon's own namespace, with the same tracking setup every built-in vehicle type here uses.

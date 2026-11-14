@@ -108,7 +108,7 @@ def run(gamedir, extra):
            "--assetsDir", str(ASSETS), "--assetIndex", v["assetIndex"]["id"],
            "--uuid", "00000000000000000000000000000001", "--accessToken", "0", "--userType", "legacy",
            "--versionType", "release", "--width", "960", "--height", "540",
-           "--quickPlaySingleplayer", "tvm"]
+           ] + (["--quickPlayMultiplayer", os.environ["TVM_SERVER"]] if os.environ.get("TVM_SERVER") else ["--quickPlaySingleplayer", "tvm"])
     return subprocess.call(cmd, cwd=gamedir)
 
 

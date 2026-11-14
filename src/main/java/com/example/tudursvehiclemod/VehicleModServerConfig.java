@@ -63,7 +63,9 @@ public final class VehicleModServerConfig {
 	 * meaningful when destroyedVehicleDespawnEnabled is true. */
 	public int destroyedVehicleDespawnSeconds = 300;
 
-	/** A CarrierRunwayPlatformEntity's own dimensions are fixed once, at entity TYPE registration - which happens at mod init, before any vehicle.json (and so any RunwayDefinition's own actual width) has even been parsed yet. This is read at that same early point instead, standing in for "the runway width to size tiles for" - set this to match your own actual runway width(s) if they differ from the default (30.0). Defaults to 30.0. */
+	/** No longer used: runway floors are no longer made of fixed-size tiles (see entity.RunwayDeckCollision). Still read from an existing config file, and ignored.
+	 * @deprecated has no effect */
+	@Deprecated
 	public double carrierRunwayExpectedWidth = 30.0;
 
 	/** Caps the TOTAL number of chunks force-loaded by flying projectiles (see entity.projectile.ProjectileChunkLoadTracker's own doc) across the whole server at once - deliberately separate from every OTHER always-loaded feature (CAS/Carrier aircraft, Drone Center, etc.), which a mapper can already tune indirectly via the relevant weapon/vehicle file's own settings and stay entirely unaffected by this. When exceeded, the OLDEST-spawned projectile(s) still holding a claim have theirs released first (oldest-spawn-order eviction, not oldest-updated) until back within the limit - a released projectile isn't discarded outright, it simply stops being force-loaded, so it may go on to freeze (stop ticking) if it then flies outside every player's own normal render/simulation distance. 0 disables projectile chunk-forcing entirely - no projectile ever force-loads anything, the exact pre-this-feature behavior. Defaults to 300 (a generous but bounded budget - a MachineGun-heavy server firing many projectiles at once won't spiral into an unbounded number of force-loaded chunks). */

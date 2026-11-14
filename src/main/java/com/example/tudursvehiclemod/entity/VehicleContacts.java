@@ -167,7 +167,7 @@ public final class VehicleContacts {
 			}
 		}
 		for (LivingEntity living : world.getEntitiesOfClass(LivingEntity.class, self.worldBox(),
-				entity -> entity.isAlive() && !entity.isPassenger() && !(entity instanceof CarrierRunwayPlatformEntity))) {
+				entity -> entity.isAlive() && !entity.isPassenger())) {
 			Contact contact = tudursvehiclemod$entityOverlap(self, living);
 			if (contact != null) {
 				contacts.add(contact);

@@ -227,15 +227,6 @@ with no restart.
 - How long a destroyed vehicle stays in the world before despawning. Only
   meaningful when destroyed vehicle despawn is on.
 
-### Carrier runway expected width (`carrierRunwayExpectedWidth`) - immediate (newly generated runway tiles only)
-
-- Range: 10 - 60 blocks (default: 30.0)
-- The assumed width used to size a carrier runway's own support tiles at
-  mod load time, before the actual runway width from a vehicle file is
-  known. If your actual runway width differs from the default, set this
-  to match. Existing tiles keep the size they were already fixed at, so a
-  change affects only newly generated tiles.
-
 ### Projectile forced-chunk limit (`projectileForcedChunkLimit`) - immediate
 
 - Possible values: disabled (0) / 50 - 1000 (default: 300)
