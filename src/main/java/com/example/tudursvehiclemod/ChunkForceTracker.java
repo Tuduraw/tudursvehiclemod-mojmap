@@ -15,7 +15,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 
 /** Multiple AircraftEntity instances flying close together (a formation) each independently tracked and force-loaded their OWN overlapping 3x3 grid of chunks around themselves. Since their grids overlap heavily while flying in formation, one aircraft's own per-tick "unforce whatever chunk just fell out of MY OWN grid" logic had no way to know a DIFFERENT aircraft's own grid still relied on that same, shared chunk - it unforced it anyway, silently undoing the other aircraft's own force-loading.
  *
- * Fixes this by centralizing every force-load request behind simple reference counting, keyed per (world, chunk): a chunk is only ever ACTUALLY force-loaded when its own first requester asks for it, and only ever actually un-forced once its own LAST remaining requester releases it - any number of independent, overlapping requesters (multiple aircraft, a Drone Center, a Station, a Carrier mothership's own grid, etc.) can safely request/release the very same chunk without ever stepping on each other, regardless of ordering.
+ * Fixes this by centralizing every force-load request behind simple reference counting, keyed per (world, chunk): a chunk is only ever ACTUALLY force-loaded when its own first requester asks for it, and only ever actually un-forced once its own LAST remaining requester releases it (a moment later - see scheduleUnforce()) - any number of independent, overlapping requesters (multiple aircraft, a Drone Center, a Station, a Carrier mothership's own grid, etc.) can safely request/release the very same chunk without ever stepping on each other, regardless of ordering.
  *
  * requester is typically "this" from whichever entity/block instance is asking - any Object works, since it's used purely as an identity key. An owner that force-loads several independent things (a Drone Center's own chunk AND its vehicle's grid, say) uses a {@link Purpose} per thing, so releasing one never releases the other where they overlap. Every chunk this mod force-loads goes through here, which is what lets {@link #resetForcedChunks} tell this mod's live requests apart from leftovers. The outer map itself is a WeakHashMap keyed on ServerWorld, and is also cleared when the server stops. */
 public final class ChunkForceTracker {
@@ -42,6 +42,11 @@ public final class ChunkForceTracker {
 		Set<Object> requesters = REQUESTERS.computeIfAbsent(world, w -> new HashMap<>())
 				.computeIfAbsent(pos, p -> new HashSet<>());
 		if (requesters.add(requester) && requesters.size() == 1) {
+			// Still force-loaded from its last requester (see scheduleUnforce()): taken back as it is.
+			Map<ChunkPos, Integer> pending = PENDING_UNFORCE.get(world);
+			if (pending != null && pending.remove(pos) != null) {
+				return;
+			}
 			if (loadFirst) {
 				world.getChunk(pos.x, pos.z);
 			}
@@ -49,8 +54,17 @@ public final class ChunkForceTracker {
 		}
 	}
 
-	/** Un-registers requester from pos - actually un-forces it only if requester turns out to have been the very last one still asking for this exact chunk. Safe to call even if requester never actually request()ed this exact pos at all (a harmless no-op), which happens routinely as a moving grid naturally releases chunks it no longer covers. */
+	/** Un-registers requester from pos - the chunk is un-forced (after UNFORCE_DELAY_TICKS, see scheduleUnforce()) only if requester turns out to have been the very last one still asking for this exact chunk. Safe to call even if requester never actually request()ed this exact pos at all (a harmless no-op), which happens routinely as a moving grid naturally releases chunks it no longer covers. */
 	public static void release(ServerLevel world, ChunkPos pos, Object requester) {
+		release(world, pos, requester, false);
+	}
+
+	/** release() without the delay: if requester was the last one, the chunk is un-forced on the spot. For a release whose whole point is that the chunk stops being loaded right now (a projectile pushed out by the force-load limit - ProjectileChunkLoadTracker). */
+	public static void releaseImmediately(ServerLevel world, ChunkPos pos, Object requester) {
+		release(world, pos, requester, true);
+	}
+
+	private static void release(ServerLevel world, ChunkPos pos, Object requester, boolean immediately) {
 		Map<ChunkPos, Set<Object>> worldMap = REQUESTERS.get(world);
 		if (worldMap == null) {
 			return;
@@ -61,7 +75,52 @@ public final class ChunkForceTracker {
 		}
 		if (requesters.isEmpty()) {
 			worldMap.remove(pos);
-			world.setChunkForced(pos.x, pos.z, false);
+			if (immediately) {
+				world.setChunkForced(pos.x, pos.z, false);
+			} else {
+				scheduleUnforce(world, pos);
+			}
+		}
+	}
+
+	/** How long (ticks) a chunk stays force-loaded after its last requester released it. */
+	public static final int UNFORCE_DELAY_TICKS = 20;
+
+	/** Chunks nobody requests any more, still force-loaded, with the server tick they are un-forced at. */
+	private static final Map<ServerLevel, Map<ChunkPos, Integer>> PENDING_UNFORCE = new WeakHashMap<>();
+
+	/** Un-forces pos UNFORCE_DELAY_TICKS from now, unless it is requested again before then.
+	 *
+	 * <p>Why not at once: removing a forced ticket makes the game rebuild its whole set of force-loaded chunks from every ticket the world holds (TicketStorage.removeTicket() -> updateForcedChunks()), so each un-forcing costs in proportion to how many chunks are loaded. Projectiles release and re-request the same few chunks many times a second (one shot's chunks are released as it lands, the next shot asks for them again), and in a large fight this was the single largest cost of a server tick. Held back for a moment, nearly all of those releases are cancelled by the next request. */
+	private static void scheduleUnforce(ServerLevel world, ChunkPos pos) {
+		PENDING_UNFORCE.computeIfAbsent(world, w -> new HashMap<>())
+				.put(pos, world.getServer().getTickCount() + UNFORCE_DELAY_TICKS);
+	}
+
+	/** End of each world tick (VehicleMod's END_WORLD_TICK): un-forces the chunks whose delay has run out. */
+	public static void onEndWorldTick(ServerLevel world) {
+		Map<ChunkPos, Integer> pending = PENDING_UNFORCE.get(world);
+		if (pending == null || pending.isEmpty()) {
+			return;
+		}
+		int now = world.getServer().getTickCount();
+		Iterator<Map.Entry<ChunkPos, Integer>> it = pending.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry<ChunkPos, Integer> entry = it.next();
+			if (now >= entry.getValue()) {
+				it.remove();
+				world.setChunkForced(entry.getKey().x, entry.getKey().z, false);
+			}
+		}
+	}
+
+	/** Un-forces every chunk still waiting out its delay, right now. Called when the server stops, before the world is saved (force-loading is saved with it). */
+	public static void flushPendingUnforce() {
+		for (Map.Entry<ServerLevel, Map<ChunkPos, Integer>> entry : PENDING_UNFORCE.entrySet()) {
+			for (ChunkPos pos : entry.getValue().keySet()) {
+				entry.getKey().setChunkForced(pos.x, pos.z, false);
+			}
+			entry.getValue().clear();
 		}
 	}
 
@@ -83,6 +142,7 @@ public final class ChunkForceTracker {
 	/** Called when the server stops, so a singleplayer world that's been left can't keep its ServerWorld (and every requester's entity) reachable into the next one. */
 	public static void clear() {
 		REQUESTERS.clear();
+		PENDING_UNFORCE.clear();
 	}
 
 	/** Outcome of {@link #resetForcedChunks}. */
@@ -100,6 +160,8 @@ public final class ChunkForceTracker {
 				it.remove();
 			}
 		}
+		// Chunks waiting out their un-force delay have no requester left, so the loop below un-forces them along with the leftovers.
+		PENDING_UNFORCE.remove(world);
 		LongSet forced = new LongOpenHashSet(world.getForceLoadedChunks());
 		int released = 0;
 		for (long packed : forced) {
@@ -130,8 +192,7 @@ public final class ChunkForceTracker {
 			if (requesters.removeIf(matches) && requesters.isEmpty()) {
 				it.remove();
 				if (unforce) {
-					ChunkPos pos = entry.getKey();
-					world.setChunkForced(pos.x, pos.z, false);
+					scheduleUnforce(world, entry.getKey());
 				}
 			}
 		}

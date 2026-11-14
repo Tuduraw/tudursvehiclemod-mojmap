@@ -86,6 +86,12 @@ public class TvmTest implements ModInitializer {
 				spawnCounts.merge(Registries.ENTITY_TYPE.getId(entity.getType()).toString(), 1, Integer::sum);
 			}
 		});
+		ServerTickEvents.START_SERVER_TICK.register(srv -> tickStartNanos = System.nanoTime());
+		ServerTickEvents.END_SERVER_TICK.register(srv -> {
+			if (tickDurations != null) {
+				tickDurations.add(System.nanoTime() - tickStartNanos);
+			}
+		});
 		ServerTickEvents.END_SERVER_TICK.register(this::tick);
 		CommandRegistrationCallback.EVENT.register((dispatcher, access, env) -> dispatcher.register(
 				CommandManager.literal("tvmtest").requires(src -> true)
@@ -97,6 +103,19 @@ public class TvmTest implements ModInitializer {
 								.executes(ctx -> { start(ctx.getSource().getServer(), StringArgumentType.getString(ctx, "name"), "park"); return 1; })))
 						.then(CommandManager.literal("parkcheck").then(CommandManager.argument("name", StringArgumentType.word())
 								.executes(ctx -> { start(ctx.getSource().getServer(), StringArgumentType.getString(ctx, "name"), "parkcheck"); return 1; })))
+						.then(CommandManager.literal("stress").then(CommandManager.argument("name", StringArgumentType.word())
+								.then(CommandManager.argument("copies", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+										.then(CommandManager.argument("ticks", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+												.executes(ctx -> { stress(ctx.getSource().getServer(), StringArgumentType.getString(ctx, "name"),
+														com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "copies"),
+														com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "ticks"), "fire"); return 1; })
+												.then(CommandManager.argument("mode", StringArgumentType.word())
+														.executes(ctx -> { stress(ctx.getSource().getServer(), StringArgumentType.getString(ctx, "name"),
+																com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "copies"),
+																com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "ticks"),
+																StringArgumentType.getString(ctx, "mode")); return 1; }))))))
+						.then(CommandManager.literal("deck").then(CommandManager.argument("name", StringArgumentType.word())
+								.executes(ctx -> { deck(ctx.getSource().getServer(), StringArgumentType.getString(ctx, "name")); return 1; })))
 						.then(CommandManager.literal("probe").executes(ctx -> { probe(ctx.getSource().getWorld()); return 1; }))
 						.then(CommandManager.literal("gallery").executes(ctx -> { gallery(ctx.getSource().getWorld()); return 1; }))
 						.then(CommandManager.literal("view").then(CommandManager.argument("i", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
@@ -329,7 +348,7 @@ public class TvmTest implements ModInitializer {
 		then("park-chunks", () -> {
 			for (int cx = -1; cx <= (ids.size() * 24) / 16 + 1; cx++) {
 				for (int cz = 49; cz <= 54; cz++) {
-					world.setChunkForced(cx, cz, true);
+					force(world, cx, cz, true);
 				}
 			}
 			if (spawnFirst) {
@@ -401,6 +420,215 @@ public class TvmTest implements ModInitializer {
 		} catch (ReflectiveOperationException e) {
 			throw new RuntimeException(e);
 		}
+	}
+
+	// ------------------------------------------------------------------ load test
+	long tickStartNanos;
+	List<Long> tickDurations;
+
+	/**
+	 * Load test for comparing tick cost between two builds: `copies` of every definition, a dummy pilot in every seat,
+	 * tough targets in front of each, everything firing for `ticks` ticks. Writes the server tick durations
+	 * (START_SERVER_TICK to END_SERVER_TICK) to tvmtest-<name>.json. mode "idle" spawns the vehicles only (empty, parked);
+	 * "manned" seats the pilots and places the targets but nothing is fired by the harness.
+	 */
+	void stress(MinecraftServer srv, String name, int copies, int ticks, String mode) {
+		final boolean crew = !mode.equals("idle");
+		final boolean fire = mode.equals("fire");
+		this.server = srv;
+		this.reportName = name;
+		this.report = new JsonObject();
+		report.addProperty("mode", "stress-" + mode);
+		report.add("exceptions", new JsonArray());
+		ServerWorld world = srv.getOverworld();
+		List<Identifier> ids = new ArrayList<>(VehicleRegistry.getAll().keySet());
+		ids.sort(java.util.Comparator.comparing(Identifier::toString));
+		final List<AbstractVehicleEntity> fleet = new ArrayList<>();
+		// A compact grid (about what one player's view distance keeps loaded), so the share of vanilla chunk ticking stays realistic.
+		final int columns = 10, spacingX = 40, spacingZ = 56;
+		final int total = ids.size() * copies;
+		final int rows = (total + columns - 1) / columns;
+		then("stress/setup", () -> {
+			for (int cx = -2; cx <= (columns * spacingX) / 16 + 1; cx++) {
+				for (int cz = -2; cz <= (rows * spacingZ) / 16 + 2; cz++) {
+					force(world, cx, cz, true);
+				}
+			}
+		});
+		wait("stress/chunks", 40, null);
+		then("stress/spawn", () -> {
+			for (int n = 0; n < total; n++) {
+				final Identifier id = ids.get(n % ids.size());
+				VehicleDefinition def = VehicleRegistry.get(id).orElseThrow();
+				final int x = (n % columns) * spacingX;
+				final int zBase = (n / columns) * spacingZ;
+				guard("stress/" + id, () -> {
+					if (isWater(def)) {
+						for (int px = x - 16; px <= x + 16; px++) for (int pz = zBase - 20; pz <= zBase + 30; pz++) for (int y = -63; y <= WATER_TOP - 1; y++) {
+							boolean wall = px == x - 16 || px == x + 16 || pz == zBase - 20 || pz == zBase + 30;
+							world.setBlockState(new BlockPos(px, y, pz), wall ? Blocks.STONE.getDefaultState() : Blocks.WATER.getDefaultState(), Block.NOTIFY_LISTENERS | Block.FORCE_STATE);
+						}
+					}
+					double z = zBase + 0.5;
+					AbstractVehicleEntity v = spawn(world, id, new Vec3d(x + 0.5, isWater(def) ? WATER_TOP : GROUND_Y, z));
+					fillAmmo(v);
+					fillFuel(v);
+					int seats = Math.max(1, def.seats().size());
+					for (int seat = 0; crew && seat < seats; seat++) {
+						DummyPilotEntity p = (DummyPilotEntity) ModEntityTypes.DUMMY_PILOT.create(world, SpawnReason.COMMAND);
+						p.refreshPositionAndAngles(v.getX(), v.getY(), v.getZ(), 0f, 0f);
+						world.spawnEntity(p);
+						p.startRiding(v, true, false);
+					}
+					for (int t = 0; crew && t < 2; t++) {
+						husk(world, new Vec3d(x - 3 + t * 6, isWater(def) ? WATER_TOP : GROUND_Y, z + 24));
+					}
+					fleet.add(v);
+				});
+			}
+			report.addProperty("vehicles", fleet.size());
+		});
+		wait("stress/settle", 100, null);
+		then("stress/begin", () -> tickDurations = new ArrayList<>());
+		wait("stress/run", ticks, t -> {
+			for (AbstractVehicleEntity v : fleet) {
+				if (v.isRemoved() || !fire) {
+					continue;
+				}
+				if (t % 20 == 0) {
+					fillAmmo(v);
+				}
+				if (t % 4 == 0) {
+					for (int w = 0; w < v.getDefinition().weapons().size(); w++) {
+						final int wi = w;
+						guard("stress-fire/" + v.getVehicleDefinitionId() + "/" + w, () -> v.tryFireWeapon(wi, null));
+					}
+				}
+			}
+		});
+		then("stress/record", () -> {
+			List<Long> d = tickDurations;
+			tickDurations = null;
+			long[] sorted = d.stream().mapToLong(Long::longValue).sorted().toArray();
+			double sum = 0;
+			for (long v : sorted) {
+				sum += v;
+			}
+			report.addProperty("ticks", sorted.length);
+			report.addProperty("meanMs", round(sum / sorted.length / 1.0e6));
+			report.addProperty("p50Ms", round(sorted[sorted.length / 2] / 1.0e6));
+			report.addProperty("p95Ms", round(sorted[(int) (sorted.length * 0.95)] / 1.0e6));
+			report.addProperty("maxMs", round(sorted[sorted.length - 1] / 1.0e6));
+			int alive = 0, destroyed = 0, entities = 0;
+			for (AbstractVehicleEntity v : fleet) {
+				if (!v.isRemoved()) {
+					alive++;
+					if (v.tudursvehiclemod$isDestroyed()) {
+						destroyed++;
+					}
+				}
+			}
+			for (Entity e : world.iterateEntities()) {
+				entities++;
+			}
+			report.addProperty("fleetAlive", alive);
+			report.addProperty("fleetDestroyed", destroyed);
+			report.addProperty("entitiesAtEnd", entities);
+		});
+		then("write", this::write);
+	}
+
+	// ------------------------------------------------------------------ runway deck
+	/**
+	 * For every definition with a runway: things dropped onto the deck (an armor stand, a zombie, a boat, an item) must come
+	 * to rest on it, and stay on it while the ship sails. Writes where each ended up, relative to the deck, to tvmtest-<name>.json.
+	 */
+	void deck(MinecraftServer srv, String name) {
+		this.server = srv;
+		this.reportName = name;
+		this.report = new JsonObject();
+		report.addProperty("mode", "deck");
+		report.add("exceptions", new JsonArray());
+		ServerWorld world = srv.getOverworld();
+		List<Identifier> ids = new ArrayList<>(VehicleRegistry.getAll().keySet());
+		ids.sort(java.util.Comparator.comparing(Identifier::toString));
+		int site = 0;
+		for (Identifier id : ids) {
+			VehicleDefinition def = VehicleRegistry.get(id).orElseThrow();
+			if (def.runways().isEmpty()) {
+				continue;
+			}
+			final int siteX = 4000 + site++ * 320;
+			final JsonObject rec = new JsonObject();
+			report.add(id.toString(), rec);
+			final AbstractVehicleEntity[] v = new AbstractVehicleEntity[1];
+			final List<Entity> cargo = new ArrayList<>();
+			final var runway = def.runways().get(0);
+			final double midZ = (runway.startZ() + runway.endZ()) / 2.0;
+			then(id + "/deck-prepare", () -> {
+				forceChunks(world, siteX, true);
+				if (isWater(def)) {
+					buildPool(world, siteX);
+				}
+				v[0] = spawn(world, id, new Vec3d(siteX + 0.5, isWater(def) ? WATER_TOP : GROUND_Y, 0.5));
+				fillFuel(v[0]);
+			});
+			wait(id + "/deck-tiles", 200, null);
+			then(id + "/deck-drop", () -> {
+				double deckY = v[0].getY() + runway.heightY();
+				EntityType<?>[] types = {EntityType.ARMOR_STAND, EntityType.ZOMBIE, EntityType.OAK_BOAT, EntityType.PIG};
+				for (int i = 0; i < types.length; i++) {
+					Entity e = types[i].create(world, SpawnReason.COMMAND);
+					if (e instanceof MobEntity mob) {
+						mob.setPersistent();
+						mob.setAiDisabled(false);
+					}
+					e.refreshPositionAndAngles(v[0].getX() + runway.centerX() - 3 + i * 2, deckY + 3.0, v[0].getZ() + midZ, 0f, 0f);
+					world.spawnEntity(e);
+					cargo.add(e);
+				}
+				int tiles = 0;
+				for (Entity e : world.iterateEntities()) {
+					if (e instanceof com.example.tudursvehiclemod.entity.CarrierRunwayPlatformEntity && Math.abs(e.getX() - siteX) < 300) {
+						tiles++;
+					}
+				}
+				rec.addProperty("tiles", tiles);
+			});
+			wait(id + "/deck-settle", 100, null);
+			then(id + "/deck-rest", () -> {
+				rec.add("atRest", deckState(v[0], runway.heightY(), cargo));
+				DummyPilotEntity p = (DummyPilotEntity) ModEntityTypes.DUMMY_PILOT.create(world, SpawnReason.COMMAND);
+				p.refreshPositionAndAngles(v[0].getX(), v[0].getY(), v[0].getZ(), 0f, 0f);
+				world.spawnEntity(p);
+				p.startRiding(v[0], true, false);
+			});
+			wait(id + "/deck-sail", 200, t -> {
+				if (v[0] != null && !v[0].isRemoved()) {
+					v[0].setSyncedThrottleInput(1.0f);
+				}
+			});
+			then(id + "/deck-sailed", () -> {
+				rec.add("afterSailing", deckState(v[0], runway.heightY(), cargo));
+				rec.add("ship", state(v[0]));
+				cleanup(world, siteX);
+				forceChunks(world, siteX, false);
+			});
+		}
+		then("write", this::write);
+	}
+
+	JsonObject deckState(AbstractVehicleEntity ship, double deckHeight, List<Entity> cargo) {
+		JsonObject o = new JsonObject();
+		for (Entity e : cargo) {
+			JsonObject c = new JsonObject();
+			c.addProperty("removed", e.isRemoved());
+			c.addProperty("aboveDeck", round(e.getY() - (ship.getY() + deckHeight)));
+			c.addProperty("offsetX", round(e.getX() - ship.getX()));
+			c.addProperty("offsetZ", round(e.getZ() - ship.getZ()));
+			o.add(Registries.ENTITY_TYPE.getId(e.getType()).getPath(), c);
+		}
+		return o;
 	}
 
 	// ------------------------------------------------------------------ client gallery
@@ -562,10 +790,20 @@ public class TvmTest implements ModInitializer {
 		return m;
 	}
 
+	/** Through the mod's own ChunkForceTracker, not ServerWorld.setChunkForced(): a chunk forced directly is un-forced as soon as the last projectile that also asked for it lets go, and with no player around the vehicle under test then stops ticking. */
+	void force(ServerWorld world, int cx, int cz, boolean on) {
+		net.minecraft.util.math.ChunkPos pos = new net.minecraft.util.math.ChunkPos(cx, cz);
+		if (on) {
+			com.example.tudursvehiclemod.ChunkForceTracker.request(world, pos, this);
+		} else {
+			com.example.tudursvehiclemod.ChunkForceTracker.release(world, pos, this);
+		}
+	}
+
 	void forceChunks(ServerWorld world, int siteX, boolean on) {
 		for (int cx = (siteX >> 4) - 5; cx <= (siteX >> 4) + 5; cx++) {
 			for (int cz = -5; cz <= 12; cz++) {
-				world.setChunkForced(cx, cz, on);
+				force(world, cx, cz, on);
 			}
 		}
 	}

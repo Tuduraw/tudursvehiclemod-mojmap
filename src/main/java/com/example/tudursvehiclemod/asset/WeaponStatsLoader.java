@@ -23,7 +23,10 @@ public final class WeaponStatsLoader {
 	/** Matches AbstractVehicleEntity's own original hardcoded MISSILE_TURN_RATE_DEGREES_PER_TICK value exactly, per TurnRate's own doc. */
 	private static final float MISSILE_TURN_RATE_DEGREES_PER_TICK_DEFAULT = 3.0f;
 
-	private static Map<String, WeaponStats> loaded = Map.of();
+	private static volatile Map<String, WeaponStats> loaded = Map.of();
+
+	/** get()'s results by the name exactly as it was asked for, so a repeated lookup is one map read. Every WeaponDefinition accessor comes through get() - several times per weapon, per vehicle, per tick - and each used to lower-case the name (a new String) first. Replaced with an empty map whenever the stats are reloaded (always AFTER loaded itself, so a lookup racing a reload can only ever file an old result in the map being thrown away). */
+	private static volatile Map<String, WeaponStats> resolvedByName = new java.util.concurrent.ConcurrentHashMap<>();
 
 	private WeaponStatsLoader() {
 	}
@@ -32,14 +35,20 @@ public final class WeaponStatsLoader {
 
 	/** Falls back to WeaponStats.FALLBACK if name isn't currently loaded (missing file, failed to parse, or not yet reloaded). */
 	public static WeaponStats get(String name) {
+		Map<String, WeaponStats> resolved = resolvedByName;
+		WeaponStats stats = resolved.get(name);
+		if (stats != null) {
+			return stats;
+		}
 		String key = name.toLowerCase(Locale.ROOT);
-		WeaponStats stats = loaded.get(key);
+		stats = loaded.get(key);
 		if (stats == null) {
 			if (loggedFallbacks.add(key)) {
 				LOGGER.warn("[tudursvehiclemod] Weapon '{}' has no loaded stats - using WeaponStats.FALLBACK", key);
 			}
-			return WeaponStats.FALLBACK;
+			stats = WeaponStats.FALLBACK;
 		}
+		resolved.put(name, stats);
 		return stats;
 	}
 
@@ -142,6 +151,7 @@ public final class WeaponStatsLoader {
 			}
 		}
 		loaded = Map.copyOf(result);
+		resolvedByName = new java.util.concurrent.ConcurrentHashMap<>();
 		loggedFallbacks.clear();
 		LOGGER.info("Loaded {} weapon config(s) ({} bundled, {} addon pack(s) found)",
 				loaded.size(), fromResourcePacks, addonDirs.size());
@@ -157,6 +167,7 @@ public final class WeaponStatsLoader {
 		Map<String, WeaponStats> lowerCased = new HashMap<>();
 		weapons.forEach((name, stats) -> lowerCased.put(name.toLowerCase(Locale.ROOT), stats));
 		loaded = Map.copyOf(lowerCased);
+		resolvedByName = new java.util.concurrent.ConcurrentHashMap<>();
 		loggedFallbacks.clear();
 	}
 

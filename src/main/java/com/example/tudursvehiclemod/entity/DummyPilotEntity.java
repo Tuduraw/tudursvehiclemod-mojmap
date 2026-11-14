@@ -41,6 +41,16 @@ public class DummyPilotEntity extends LivingEntity {
 	/** Server-side only - the mob currently being engaged, re-picked every TARGET_REACQUIRE_INTERVAL_TICKS. Plain field: nothing client-side needs it (this pilot's own posture doesn't change when it's shooting). */
 	private LivingEntity currentTarget;
 
+	/** What this pilot is attacking right now, or null. */
+	public LivingEntity tudursvehiclemod$getCurrentTarget() {
+		return this.currentTarget;
+	}
+
+	/** Makes this pilot attack target (null: drop the current one; it looks for another on its next search). The target is still dropped by the usual checks - dead, out of range, out of sight. */
+	public void tudursvehiclemod$setCurrentTarget(LivingEntity target) {
+		this.currentTarget = target;
+	}
+
 	/** Which weapon slot to engage hostile mobs with, and (for an aircraft specifically - see tudursvehiclemod$updateCombatAi()'s own doc) the Carrier-lock-pursuit attack-altitude thresholds to use, all mirrored from the owning DroneCenterBlockEntity's own current settings every tick (tudursvehiclemod$setCombatSettings(), called from that block's own tudursvehiclemod$updateDummyPilot() alongside the existing skin/name push) rather than captured once at spawn time - a player can change any of these live while the same drone keeps flying. weaponIndex defaults to -1 (not selected, per DroneCenterBlockEntity's own dummyPilotWeaponIndex doc) so a pilot that somehow ticks even once before its first settings push (should never actually happen in practice) fails safe into "no combat" rather than an arbitrary weapon slot. */
 	private int combatWeaponIndex = -1;
 	private double combatAttackStartAltitude = 200.0;

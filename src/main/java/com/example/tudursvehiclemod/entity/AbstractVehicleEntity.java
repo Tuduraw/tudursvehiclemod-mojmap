@@ -507,11 +507,25 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 
 	/** See ThrottleInputPayload's own doc for why this exists instead of just reading PlayerEntity#forwardSpeed directly. A ground-route-following vehicle previously moved smoothly only for a riding-but-not-driving passenger's own client - see tudursvehiclemod$applyGroundWaypointAutopilotInputs()'s own doc for the full mechanism: while this vehicle's own GROUND_ROUTE_ACTIVE flag (synced) is true, returns the synced GROUND_AUTOPILOT_THROTTLE_INPUT instead of this plain field - every client now reads the SAME, correct, autopilot-driven value this way, rather than each client's own copy of this plain field (which, for an autopilot-driven vehicle, no packet from any actual controlling player ever populates at all). Falls back to this plain field otherwise, unchanged - an actual player-piloted vehicle's own input responsiveness is completely unaffected, since GROUND_ROUTE_ACTIVE is never true for one. */
 	public float getSyncedThrottleInput() {
+		ExternalMotionController controller = this.externalMotionController;
+		if (controller != null) {
+			Float external = controller.tudursvehiclemod$throttle(this);
+			if (external != null) {
+				return external;
+			}
+		}
 		return this.entityData.get(GROUND_ROUTE_ACTIVE) ? this.entityData.get(GROUND_AUTOPILOT_THROTTLE_INPUT) : this.syncedThrottleInput;
 	}
 
 	/** See getSyncedThrottleInput()'s own doc - same reasoning, same mechanism, for steering instead of throttle. */
 	public float getSyncedSidewaysInput() {
+		ExternalMotionController controller = this.externalMotionController;
+		if (controller != null) {
+			Float external = controller.tudursvehiclemod$steering(this);
+			if (external != null) {
+				return external;
+			}
+		}
 		return this.entityData.get(GROUND_ROUTE_ACTIVE) ? this.entityData.get(GROUND_AUTOPILOT_STEER_INPUT) : this.syncedSidewaysInput;
 	}
 
@@ -547,6 +561,13 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	}
 
 	public float getThrottle() {
+		ExternalMotionController controller = this.externalMotionController;
+		if (controller != null) {
+			Float external = controller.tudursvehiclemod$throttle(this);
+			if (external != null) {
+				return external;
+			}
+		}
 		return this.entityData.get(THROTTLE);
 	}
 
@@ -1037,8 +1058,20 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	/** "/tvm clean -d" resets ALL persisted vehicle data by spawning a fresh replacement entity (see command.TvmCommand's own doc) - needed to tell that fresh entity which vehicle definition it should represent, since only setVehicleDefinitionId() existed before this. Null if VEHICLE_ID's own raw string is somehow malformed (should never actually happen for a live, functioning vehicle). */
 	public Identifier getVehicleDefinitionId() {
 		String raw = this.entityData.get(VEHICLE_ID);
-		return Identifier.tryParse(raw);
+		ParsedDefinitionId parsed = this.tudursvehiclemod$parsedDefinitionId;
+		// The same String object until the synced value is set again, so the parse (addons look their own settings up by this id, many times a tick) is done once per value.
+		if (parsed == null || parsed.raw() != raw) {
+			parsed = new ParsedDefinitionId(raw, Identifier.tryParse(raw));
+			this.tudursvehiclemod$parsedDefinitionId = parsed;
+		}
+		return parsed.id();
 	}
+
+	/** VEHICLE_ID's value with the Identifier parsed from it - see getVehicleDefinitionId(). */
+	private record ParsedDefinitionId(String raw, Identifier id) {
+	}
+
+	private ParsedDefinitionId tudursvehiclemod$parsedDefinitionId;
 
 	/** Current health, out of getMaxHealth(). */
 	public float getHealth() {
@@ -1316,16 +1349,27 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		if (encoded.isEmpty()) {
 			return java.util.Set.of();
 		}
-		java.util.Set<Integer> ids = new java.util.HashSet<>();
-		for (String part : encoded.split(",")) {
-			try {
-				ids.add(Integer.parseInt(part));
-			} catch (NumberFormatException ignored) {
-				// Defensive - shouldn't happen given this is entirely this mod's own encoding, but a malformed value here shouldn't crash rendering.
+		// Parsed once per synced value (read for every vehicle, every frame) - the same String object until it is set again. The set is read-only.
+		DecodedHighlightedIds decoded = this.tudursvehiclemod$decodedHighlightedIds;
+		if (decoded == null || decoded.encoded() != encoded) {
+			java.util.Set<Integer> ids = new java.util.HashSet<>();
+			for (String part : encoded.split(",")) {
+				try {
+					ids.add(Integer.parseInt(part));
+				} catch (NumberFormatException ignored) {
+					// Defensive - shouldn't happen given this is entirely this mod's own encoding, but a malformed value here shouldn't crash rendering.
+				}
 			}
+			decoded = new DecodedHighlightedIds(encoded, java.util.Collections.unmodifiableSet(ids));
+			this.tudursvehiclemod$decodedHighlightedIds = decoded;
 		}
-		return ids;
+		return decoded.ids();
 	}
+
+	private record DecodedHighlightedIds(String encoded, java.util.Set<Integer> ids) {
+	}
+
+	private DecodedHighlightedIds tudursvehiclemod$decodedHighlightedIds;
 
 	/** Attempts to lock whatever is currently under shooter's own crosshair, assigning it to a wingman to attack - see AircraftEntity's own override for the real logic (which needs that class's own formation registries). No-op base-class default for any non-aircraft vehicle, where this feature doesn't apply at all. */
 	public void tudursvehiclemod$tryLockCarrierTarget(net.minecraft.server.level.ServerPlayer shooter) {
@@ -1917,6 +1961,31 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	public interface ExternalMotionController {
 		/** Called once per tick, in place of updateVehicleMovement(), at the point where the vehicle's own movement normally runs. Typically calls vehicle.tudursvehiclemod$applyExternalPose(). Return false to let the vehicle's own physics run for this tick instead (for example once the controller has finished). */
 		boolean tudursvehiclemod$tickMotion(AbstractVehicleEntity vehicle);
+
+		/** The throttle the vehicle reports while this controller is installed - getThrottle(), getSyncedThrottleInput() and (for vehicle types that don't compute their own) the speed of its spinning parts - or null (the default) to leave it as it is. For a controller that moves the vehicle itself but still wants the engine sound, rotors, exhaust and HUD to show a power setting. */
+		default Float tudursvehiclemod$throttle(AbstractVehicleEntity vehicle) {
+			return null;
+		}
+
+		/** The steering input (getSyncedSidewaysInput()) the vehicle reports while this controller is installed, or null (the default) to leave it as it is. */
+		default Float tudursvehiclemod$steering(AbstractVehicleEntity vehicle) {
+			return null;
+		}
+
+		/** Where the occupant of seatIndex is taken to be looking, for the weapon parts that follow that seat (getWeaponAimYaw()/getWeaponAimPitch()): {yaw relative to the vehicle, pitch}, in degrees. Null (the default) = the occupant's own view. Only asked while that seat has an occupant. */
+		default float[] tudursvehiclemod$aim(AbstractVehicleEntity vehicle, int seatIndex, float tickProgress) {
+			return null;
+		}
+	}
+
+	/** ExternalMotionController#tudursvehiclemod$aim() for occupant's seat, or null if there is no controller or it leaves that seat alone. */
+	private float[] tudursvehiclemod$externalAim(Entity occupant, float tickProgress) {
+		ExternalMotionController controller = this.externalMotionController;
+		if (controller == null || occupant == null || occupant == this) {
+			return null;
+		}
+		int seatIndex = this.tudursvehiclemod$getAssignedSeatIndex(occupant);
+		return seatIndex < 0 ? null : controller.tudursvehiclemod$aim(this, seatIndex, tickProgress);
 	}
 
 	/** See ExternalMotionController. Null (the default) = the vehicle's own physics. */
@@ -2525,6 +2594,77 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		return getThrottle();
 	}
 
+	/** Sets this vehicle's health directly, held within 0..getMaxHealth(). Nothing else happens: it neither destroys the vehicle at 0 nor revives a destroyed one - for an addon that changes what a vehicle is (and so its maximum health) and has to carry the health over. Server side. */
+	public void tudursvehiclemod$setHealth(float health) {
+		this.entityData.set(HEALTH, Mth.clamp(health, 0f, this.getMaxHealth()));
+	}
+
+	/** Sets this vehicle's fuel directly, held within 0..getMaxFuel() (tudursvehiclemod$addFuel() can only add). Server side. */
+	public void tudursvehiclemod$setFuel(float fuel) {
+		this.entityData.set(FUEL, Mth.clamp(fuel, 0f, this.getMaxFuel()));
+	}
+
+	/** Everything this vehicle keeps per weapon: rounds in the magazine, rounds in reserve (-1 = unlimited), ticks left of the reload under way, which of the weapon's firing positions fires next, heat, and the selected mode. */
+	public record WeaponState(int magazine, int reserve, int reloadTicks, int firingPositionIndex, float heat, int mode) {
+	}
+
+	/** The current state of the weapon at weaponIndex, or null if this vehicle has no such weapon. Server side. */
+	public WeaponState tudursvehiclemod$getWeaponState(int weaponIndex) {
+		this.tudursvehiclemod$ensureWeaponAmmoArraysSized(this.getDefinition());
+		if (weaponIndex < 0 || weaponIndex >= this.weaponAmmo.length) {
+			return null;
+		}
+		return new WeaponState(this.weaponAmmo[weaponIndex], this.weaponReserveAmmo[weaponIndex], this.weaponReloadTicksRemaining[weaponIndex],
+				this.weaponFiringPositionIndex[weaponIndex], this.weaponHeat[weaponIndex], this.weaponMode[weaponIndex]);
+	}
+
+	/** Replaces the state of the weapon at weaponIndex and syncs it to the clients. Ignored if this vehicle has no such weapon. Nothing is checked against the weapon's own limits (magazine size, MaxAmmo). Server side. */
+	public void tudursvehiclemod$setWeaponState(int weaponIndex, WeaponState state) {
+		this.tudursvehiclemod$ensureWeaponAmmoArraysSized(this.getDefinition());
+		if (weaponIndex < 0 || weaponIndex >= this.weaponAmmo.length) {
+			return;
+		}
+		this.weaponAmmo[weaponIndex] = state.magazine();
+		this.weaponReserveAmmo[weaponIndex] = state.reserve();
+		this.weaponReloadTicksRemaining[weaponIndex] = state.reloadTicks();
+		this.weaponFiringPositionIndex[weaponIndex] = state.firingPositionIndex();
+		this.weaponHeat[weaponIndex] = state.heat();
+		this.weaponMode[weaponIndex] = state.mode();
+		this.tudursvehiclemod$syncWeaponAmmo();
+	}
+
+	/** Replaces the state of every weapon at once, one entry per weapon of the CURRENT definition, in order (a missing entry leaves that weapon empty; extra ones are ignored). For an addon whose vehicle changes its weapons while it exists: the per-weapon state is kept by index, so after such a change it has to be put back where each weapon now is. Server side. */
+	public void tudursvehiclemod$setWeaponStates(List<WeaponState> states) {
+		List<WeaponDefinition> weapons = this.getDefinition().weapons();
+		int count = weapons.size();
+		this.weaponAmmo = new int[count];
+		this.weaponReserveAmmo = new int[count];
+		this.weaponReloadTicksRemaining = new int[count];
+		this.weaponFiringPositionIndex = new int[count];
+		this.weaponHeat = new float[count];
+		this.weaponMode = new int[count];
+		for (int i = 0; i < count; i++) {
+			WeaponState state = i < states.size() ? states.get(i) : null;
+			if (state == null) {
+				// The state a new vehicle's weapons start in (see tudursvehiclemod$ensureWeaponAmmoArraysSized()).
+				this.weaponReserveAmmo[i] = weapons.get(i).maxAmmo() > 0 ? 0 : -1;
+				continue;
+			}
+			this.weaponAmmo[i] = state.magazine();
+			this.weaponReserveAmmo[i] = state.reserve();
+			this.weaponReloadTicksRemaining[i] = state.reloadTicks();
+			this.weaponFiringPositionIndex[i] = state.firingPositionIndex();
+			this.weaponHeat[i] = state.heat();
+			this.weaponMode[i] = state.mode();
+		}
+		this.tudursvehiclemod$syncWeaponAmmo();
+	}
+
+	/** The offset of rawYaw from the weapon's default_yaw, taken the short way round and held within [min_yaw, max_yaw] - the clamp every turret here uses, for an addon that overrides weapon aiming and has to agree with it. */
+	public static double tudursvehiclemod$clampYawOffsetFromDefault(double rawYaw, com.example.tudursvehiclemod.asset.WeaponAimRange aimRange) {
+		return tudursvehiclemod$clampedYawOffsetFromDefault(rawYaw, aimRange);
+	}
+
 	/** Public wrapper for getSpinningPartSpeedMultiplier() - see that method's own doc. Needed by client.sound.VehicleEngineSoundManager (a different package) to correct engine sound for a vehicle whose rotor speed doesn't move in lockstep with throttle. */
 	public float tudursvehiclemod$getSpinningPartSpeedMultiplier() {
 		return getSpinningPartSpeedMultiplier();
@@ -2911,10 +3051,14 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		Entity occupant = tudursvehiclemod$resolveWeaponTrackingOccupant(seatIndex, pilotFallback);
 		int cacheKey = tudursvehiclemod$weaponTrackingCacheKey(seatIndex, pilotFallback);
 		float relative;
+		// An external controller's aim for this seat, if it gives one (ExternalMotionController#tudursvehiclemod$aim()).
+		float[] externalAim = null;
 		if (occupant == null) {
 			relative = this.lastTrackedRelativeYawBySeat.getOrDefault(cacheKey, 0f);
 		} else {
-			relative = net.minecraft.util.Mth.wrapDegrees(occupant.getViewYRot(tickProgress) - this.getViewYRot(tickProgress));
+			externalAim = this.tudursvehiclemod$externalAim(occupant, tickProgress);
+			relative = externalAim != null ? net.minecraft.util.Mth.wrapDegrees(externalAim[0])
+					: net.minecraft.util.Mth.wrapDegrees(occupant.getViewYRot(tickProgress) - this.getViewYRot(tickProgress));
 			this.lastTrackedRelativeYawBySeat.put(cacheKey, relative);
 		}
 		if (aimRange == null) {
@@ -2922,7 +3066,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		}
 		if (aimRange.tilt().isTilted()) {
 			// A tilted mount's yaw depends on the view's pitch too, so the pitch is read from the same occupant / cache entry getWeaponAimPitch() uses, and the offset is taken in the tilted frame.
-			float rawPitchForYaw = occupant == null ? this.lastTrackedPitchBySeat.getOrDefault(cacheKey, 0f) : occupant.getViewXRot(tickProgress);
+			float rawPitchForYaw = occupant == null ? this.lastTrackedPitchBySeat.getOrDefault(cacheKey, 0f) : externalAim != null ? externalAim[1] : occupant.getViewXRot(tickProgress);
 			double[] view = tudursvehiclemod$viewInMountFrame(relative, rawPitchForYaw, aimRange);
 			return (float) tudursvehiclemod$clampedYawOffsetFromDefault(view[0], aimRange);
 		}
@@ -2934,10 +3078,11 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		Entity occupant = tudursvehiclemod$resolveWeaponTrackingOccupant(seatIndex, pilotFallback);
 		int cacheKey = tudursvehiclemod$weaponTrackingCacheKey(seatIndex, pilotFallback);
 		float pitch;
+		float[] externalAim = this.tudursvehiclemod$externalAim(occupant, tickProgress);
 		if (occupant == null) {
 			pitch = this.lastTrackedPitchBySeat.getOrDefault(cacheKey, 0f);
 		} else {
-			pitch = occupant.getViewXRot(tickProgress);
+			pitch = externalAim != null ? externalAim[1] : occupant.getViewXRot(tickProgress);
 			this.lastTrackedPitchBySeat.put(cacheKey, pitch);
 		}
 		if (aimRange == null) {
@@ -2948,7 +3093,8 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		if (occupant == null) {
 			rawRelativeYaw = this.lastTrackedRelativeYawBySeat.getOrDefault(cacheKey, 0f);
 		} else {
-			rawRelativeYaw = net.minecraft.util.Mth.wrapDegrees(occupant.getViewYRot(tickProgress) - this.getViewYRot(tickProgress));
+			rawRelativeYaw = externalAim != null ? net.minecraft.util.Mth.wrapDegrees(externalAim[0])
+					: net.minecraft.util.Mth.wrapDegrees(occupant.getViewYRot(tickProgress) - this.getViewYRot(tickProgress));
 		}
 		if (aimRange.tilt().isTilted()) {
 			// In the tilted frame: both view angles are needed to find the pitch there, and the zone is judged by the tilted-frame yaw.
@@ -3322,7 +3468,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		if (this.tudursvehiclemod$getRealPassengerList().indexOf(passenger) < 0) {
 			return -1;
 		}
-		Integer seatIndex = tudursvehiclemod$decodeSeatAssignments().get(passenger.getUUID());
+		Integer seatIndex = tudursvehiclemod$seatAssignments().get(passenger.getUUID());
 		return seatIndex != null ? seatIndex : -1;
 	}
 
@@ -3358,26 +3504,42 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		return null;
 	}
 
-	private java.util.Map<java.util.UUID, Integer> tudursvehiclemod$decodeSeatAssignments() {
-		java.util.Map<java.util.UUID, Integer> result = new java.util.LinkedHashMap<>();
+	/** SEAT_ASSIGNMENTS' value with the map decoded from it - see tudursvehiclemod$seatAssignments(). */
+	private record DecodedSeatAssignments(String encoded, java.util.Map<java.util.UUID, Integer> bySeatOccupant) {
+	}
+
+	private DecodedSeatAssignments tudursvehiclemod$decodedSeatAssignments = new DecodedSeatAssignments("", java.util.Map.of());
+
+	/** SEAT_ASSIGNMENTS decoded, read-only. Decoded once per synced value (the same String object until it is set again) rather than on every call: which seat a passenger is in is asked for every seat of every weapon each tick, and again for every frame drawn, and each of those used to split the string and parse every UUID in it. */
+	private java.util.Map<java.util.UUID, Integer> tudursvehiclemod$seatAssignments() {
 		String encoded = this.entityData.get(SEAT_ASSIGNMENTS);
-		if (encoded.isEmpty()) {
-			return result;
-		}
-		for (String entry : encoded.split(",")) {
-			int colonIndex = entry.indexOf(':');
-			if (colonIndex < 0) {
-				continue;
+		DecodedSeatAssignments decoded = this.tudursvehiclemod$decodedSeatAssignments;
+		if (decoded.encoded() != encoded) {
+			java.util.Map<java.util.UUID, Integer> result = new java.util.LinkedHashMap<>();
+			if (!encoded.isEmpty()) {
+				for (String entry : encoded.split(",")) {
+					int colonIndex = entry.indexOf(':');
+					if (colonIndex < 0) {
+						continue;
+					}
+					try {
+						java.util.UUID uuid = java.util.UUID.fromString(entry.substring(0, colonIndex).trim());
+						int seatIndex = Integer.parseInt(entry.substring(colonIndex + 1).trim());
+						result.put(uuid, seatIndex);
+					} catch (IllegalArgumentException ignored) {
+						// Skip a malformed entry rather than letting it corrupt the whole decode.
+					}
+				}
 			}
-			try {
-				java.util.UUID uuid = java.util.UUID.fromString(entry.substring(0, colonIndex).trim());
-				int seatIndex = Integer.parseInt(entry.substring(colonIndex + 1).trim());
-				result.put(uuid, seatIndex);
-			} catch (IllegalArgumentException ignored) {
-				// Skip a malformed entry rather than letting it corrupt the whole decode.
-			}
+			decoded = new DecodedSeatAssignments(encoded, java.util.Collections.unmodifiableMap(result));
+			this.tudursvehiclemod$decodedSeatAssignments = decoded;
 		}
-		return result;
+		return decoded.bySeatOccupant();
+	}
+
+	/** A copy of the seat assignments the caller may change, to encode again (tudursvehiclemod$encodeSeatAssignments()). */
+	private java.util.Map<java.util.UUID, Integer> tudursvehiclemod$decodeSeatAssignments() {
+		return new java.util.LinkedHashMap<>(tudursvehiclemod$seatAssignments());
 	}
 
 	private static String tudursvehiclemod$encodeSeatAssignments(java.util.Map<java.util.UUID, Integer> assignments) {
@@ -3400,8 +3562,25 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			return;
 		}
 		int seatCount = this.getDefinition().seats().size();
-		java.util.Map<java.util.UUID, Integer> assignments = tudursvehiclemod$decodeSeatAssignments();
 		boolean[] seatTaken = new boolean[seatCount];
+		// The usual case, checked without copying anything: every passenger in a valid seat of its own, and no entries left over.
+		java.util.Map<java.util.UUID, Integer> current = tudursvehiclemod$seatAssignments();
+		if (current.size() == passengers.size()) {
+			boolean consistent = true;
+			for (Entity passenger : passengers) {
+				Integer seatIndex = current.get(passenger.getUUID());
+				if (seatIndex == null || seatIndex < 0 || seatIndex >= seatCount || seatTaken[seatIndex]) {
+					consistent = false;
+					break;
+				}
+				seatTaken[seatIndex] = true;
+			}
+			if (consistent) {
+				return;
+			}
+			java.util.Arrays.fill(seatTaken, false);
+		}
+		java.util.Map<java.util.UUID, Integer> assignments = tudursvehiclemod$decodeSeatAssignments();
 		boolean changed = false;
 		for (Entity passenger : passengers) {
 			Integer seatIndex = assignments.get(passenger.getUUID());
@@ -8063,7 +8242,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			return;
 		}
 		VehicleDefinition def = this.getDefinition();
-		java.util.Set<Integer> currentTargetIds = new java.util.HashSet<>();
+		java.util.Set<Integer> currentTargetIds = java.util.Set.of();
 		for (int weaponIndex = 0; weaponIndex < def.weapons().size(); weaponIndex++) {
 			WeaponDefinition weapon = def.weapons().get(weaponIndex);
 			com.example.tudursvehiclemod.asset.CustomWeaponBehavior customBehavior = weapon.weaponType() == com.example.tudursvehiclemod.asset.WeaponType.CUSTOM
@@ -8094,6 +8273,9 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			}
 			Entity target = isCustomLockOn ? customBehavior.resolveLockTarget(this, shooter, weapon) : tudursvehiclemod$findLockOnTarget(shooter, weapon);
 			if (target != null) {
+				if (currentTargetIds.isEmpty()) {
+					currentTargetIds = new java.util.HashSet<>();
+				}
 				currentTargetIds.add(target.getId());
 				tudursvehiclemod$setEntityHighlighted(target, true);
 				// See missileLockRequiredTicks's own doc for why this is recomputed every tick rather than snapshotted once at lock-start.
@@ -8127,8 +8309,17 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			}
 		}
 		this.tudursvehiclemod$previousLockOnTargetIds = currentTargetIds;
+		// With nothing being locked, the two synced strings come out the same every tick (zeros, and each weapon's own LockTime): written once, then only refreshed now and then (a /reload can change LockTime) instead of being built again on every tick by every vehicle.
+		boolean nothingLocking = this.tudursvehiclemod$missileLockProgressTicks.isEmpty() && this.tudursvehiclemod$missileLockRequiredTicks.isEmpty();
+		if (nothingLocking && this.tudursvehiclemod$missileLockSyncIdle && this.tickCount % 20 != 0) {
+			return;
+		}
 		this.tudursvehiclemod$syncMissileLockProgress();
+		this.tudursvehiclemod$missileLockSyncIdle = nothingLocking;
 	}
+
+	/** Whether MISSILE_LOCK_SYNC/MISSILE_LOCK_REQUIRED_SYNC already hold the "nothing is locking" state - see tudursvehiclemod$updateMissileLockOnIndicators(). */
+	private boolean tudursvehiclemod$missileLockSyncIdle;
 
 	/** How far (blocks) tudursvehiclemod$findCarrierLaunchTarget() searches, and the half-angle (degrees) of the cone around the shooter's own view it searches - the same values an airborne Carrier lead's own lock-candidate search uses (AircraftEntity#CARRIER_LOCK_SEARCH_RANGE / CARRIER_LOCK_ON_CONE_DEGREES), so aiming at a target to launch against feels exactly like aiming at one to send a wingman after. */
 	private static final double CARRIER_LAUNCH_TARGET_RANGE = 1000.0;
@@ -8266,36 +8457,31 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 
 	/** Current lock progress (ticks - see tudursvehiclemod$missileLockProgressTicks's own doc) for weaponIndex, read from MISSILE_LOCK_SYNC. Public so client.hud.HudVariables can show it. 0 for every weapon type that isn't actually AAMissile/ATMissile at all, or if nothing's currently being tracked. */
 	public int tudursvehiclemod$getMissileLockProgress(int weaponIndex) {
-		String raw = this.entityData.get(MISSILE_LOCK_SYNC);
-		if (raw.isEmpty()) {
-			return 0;
-		}
-		String[] parts = raw.split(",");
-		if (weaponIndex < 0 || weaponIndex >= parts.length) {
-			return 0;
-		}
-		try {
-			return Integer.parseInt(parts[weaponIndex]);
-		} catch (NumberFormatException e) {
-			return 0;
-		}
+		int[] values = tudursvehiclemod$parseSyncedInts(this.entityData.get(MISSILE_LOCK_SYNC));
+		return weaponIndex < 0 || weaponIndex >= values.length || values[weaponIndex] == Integer.MIN_VALUE ? 0 : values[weaponIndex];
 	}
 
 	/** The distance-aware REQUIRED tick count (see tudursvehiclemod$missileLockRequiredTicks's own doc) for weaponIndex, read from MISSILE_LOCK_REQUIRED_SYNC. Public so client.hud.HudVariables can compute a correct lock_progress fraction against it. Falls back to weapon.lockTimeTicks() itself (the caller's own responsibility to pass it, since this class alone can't resolve a WeaponDefinition from an index without one) if nothing's synced yet at all. */
 	public int tudursvehiclemod$getMissileLockRequiredTicks(int weaponIndex, int fallback) {
-		String raw = this.entityData.get(MISSILE_LOCK_REQUIRED_SYNC);
+		int[] values = tudursvehiclemod$parseSyncedInts(this.entityData.get(MISSILE_LOCK_REQUIRED_SYNC));
+		return weaponIndex < 0 || weaponIndex >= values.length || values[weaponIndex] == Integer.MIN_VALUE ? fallback : values[weaponIndex];
+	}
+
+	/** A synced "n,n,.." string as numbers (Integer.MIN_VALUE where an entry isn't one), for the two lock getters above. */
+	private static int[] tudursvehiclemod$parseSyncedInts(String raw) {
 		if (raw.isEmpty()) {
-			return fallback;
+			return new int[0];
 		}
 		String[] parts = raw.split(",");
-		if (weaponIndex < 0 || weaponIndex >= parts.length) {
-			return fallback;
+		int[] values = new int[parts.length];
+		for (int i = 0; i < parts.length; i++) {
+			try {
+				values[i] = Integer.parseInt(parts[i]);
+			} catch (NumberFormatException e) {
+				values[i] = Integer.MIN_VALUE;
+			}
 		}
-		try {
-			return Integer.parseInt(parts[weaponIndex]);
-		} catch (NumberFormatException e) {
-			return fallback;
-		}
+		return values;
 	}
 
 	/** Public wrapper for CustomWeaponBehavior's own default resolveLockTarget() to reuse - see that
@@ -8562,7 +8748,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	/** Per the same request as tudursvehiclemod$updateSupplyToNearbyVehicles()'s own doc: refills THIS vehicle's own weapon ammo, called on the RECIPIENT by a nearby supplier - the magazine first, then (once the magazine is full) the reserve. Refilling only the magazine was an oversight (it went unnoticed because it was only ever tested with reserve-less vehicles): a vehicle that had also used up its reserve never got it back from a supplier at all, and a Drone Center's own AUTO_RESUME - which waits for magazine + reserve to be completely full again - could then never resume.
 	 *
 	 * Capacity follows tudursvehiclemod$tryResupplyWeapon()'s own rules exactly: for a weapon with a finite reserve (reserve >= 0 and MaxAmmo > 0) magazine + reserve + Carrier aircraft still in flight never exceeds MaxAmmo (the total capacity, magazine included); an unlimited reserve (-1) or a weapon without MaxAmmo only ever has its magazine topped up, same as before. Per-interval pacing: SUPPLY_AMMO_FRACTION_PER_INTERVAL of the magazine size for the magazine (unchanged), and the same fraction of MaxAmmo for the reserve - floored at 1 so small numbers still make progress. Syncs the ammo display once at the end, only if anything changed. */
-	private void tudursvehiclemod$receiveAmmoSupply() {
+	public void tudursvehiclemod$receiveAmmoSupply() {
 		VehicleDefinition def = this.getDefinition();
 		this.tudursvehiclemod$ensureWeaponAmmoArraysSized(def);
 		boolean changed = false;
@@ -8621,7 +8807,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	private static final float SUPPLY_AMMO_FRACTION_PER_INTERVAL = 0.1f;
 
 	/** Per the same request as tudursvehiclemod$updateSupplyToNearbyVehicles()'s own doc: restores part of THIS vehicle's own health, called on the RECIPIENT by a nearby supplier. Sets HEALTH directly, exactly as the existing iron-ingot repair path does (see tudursvehiclemod$tryRepair()'s own use of the same field), so both routes to healing behave identically. */
-	private void tudursvehiclemod$receiveHealthSupply() {
+	public void tudursvehiclemod$receiveHealthSupply() {
 		float maxHealth = this.getMaxHealth();
 		float current = this.getHealth();
 		if (current >= maxHealth) {
@@ -9569,19 +9755,51 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 						+ Math.pow(wholeMesh.maxZ() - wholeMesh.minZ(), 2))
 				* scale;
 		// Candidates by the path each projectile flew on its last move (tudursvehiclemod$lastMove()), not by where it is now: a fast shell is outside a box around the vehicle both before and after the tick it passes through. See LoadedProjectiles's doc. The move is taken HERE and carried with the candidate, and that very move is what gets checked - see HitCandidate's doc.
-		Vec3 vehiclePos = this.position();
-		List<HitCandidate> candidates = new java.util.ArrayList<>();
-		for (net.minecraft.world.entity.projectile.Projectile projectile : LoadedProjectiles.in(serverWorld)) {
-			if (projectile.isRemoved() || tudursvehiclemod$wasFiredByThisVehicle(projectile)) {
+		// Plain arithmetic on the coordinates, and nothing allocated until a projectile really is a candidate: this runs for every loaded projectile, for every vehicle, every tick, and nearly all of them are nowhere near. The move is the one tudursvehiclemod$lastMove() gives.
+		double reachSquared = meshDiagonal * meshDiagonal;
+		double vehicleX = this.getX();
+		double vehicleY = this.getY();
+		double vehicleZ = this.getZ();
+		List<HitCandidate> candidates = null;
+		for (net.minecraft.world.entity.projectile.Projectile projectile : LoadedProjectiles.loaded(serverWorld)) {
+			if (projectile.isRemoved()) {
 				continue;
 			}
-			Vec3[] move = tudursvehiclemod$lastMove(projectile);
-			Vec3 segment = move[1].subtract(move[0]);
-			if (tudursvehiclemod$distanceToSegment(vehiclePos, move[0], segment, segment.length()) <= meshDiagonal) {
-				candidates.add(new HitCandidate(projectile, move[0], move[1]));
+			double toX = projectile.getX();
+			double toY = projectile.getY();
+			double toZ = projectile.getZ();
+			double fromX = projectile.xo;
+			double fromY = projectile.yo;
+			double fromZ = projectile.zo;
+			double moveX = toX - fromX;
+			double moveY = toY - fromY;
+			double moveZ = toZ - fromZ;
+			double moveSquared = moveX * moveX + moveY * moveY + moveZ * moveZ;
+			Vec3 velocity = projectile.getDeltaMovement();
+			double plausible = velocity.length() * 2.0 + 4.0;
+			if (moveSquared > plausible * plausible) {
+				moveX = velocity.x;
+				moveY = velocity.y;
+				moveZ = velocity.z;
+				fromX = toX - moveX;
+				fromY = toY - moveY;
+				fromZ = toZ - moveZ;
+				moveSquared = moveX * moveX + moveY * moveY + moveZ * moveZ;
 			}
+			double along = moveSquared < 1.0e-12 ? 0.0
+					: Mth.clamp(((vehicleX - fromX) * moveX + (vehicleY - fromY) * moveY + (vehicleZ - fromZ) * moveZ) / moveSquared, 0.0, 1.0);
+			double nearX = fromX + moveX * along - vehicleX;
+			double nearY = fromY + moveY * along - vehicleY;
+			double nearZ = fromZ + moveZ * along - vehicleZ;
+			if (nearX * nearX + nearY * nearY + nearZ * nearZ > reachSquared || tudursvehiclemod$wasFiredByThisVehicle(projectile)) {
+				continue;
+			}
+			if (candidates == null) {
+				candidates = new java.util.ArrayList<>();
+			}
+			candidates.add(new HitCandidate(projectile, new Vec3(fromX, fromY, fromZ), new Vec3(toX, toY, toZ)));
 		}
-		if (candidates.isEmpty()) {
+		if (candidates == null) {
 			return;
 		}
 

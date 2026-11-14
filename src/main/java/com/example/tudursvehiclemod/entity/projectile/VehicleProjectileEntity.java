@@ -468,19 +468,27 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 		if (!(this.level() instanceof ServerLevel serverWorld)) {
 			return;
 		}
-		net.minecraft.world.level.ChunkPos currentChunk = new net.minecraft.world.level.ChunkPos(this.blockPosition());
+		// The grid only changes when this projectile crosses into another chunk; until then there is nothing to build or compare.
+		int chunkX = net.minecraft.core.SectionPos.blockToSectionCoord(this.getBlockX());
+		int chunkZ = net.minecraft.core.SectionPos.blockToSectionCoord(this.getBlockZ());
+		if (!this.projectileForcedChunks.isEmpty() && chunkX == this.projectileForcedCenterX && chunkZ == this.projectileForcedCenterZ) {
+			return;
+		}
 		java.util.Set<net.minecraft.world.level.ChunkPos> newGrid = new java.util.HashSet<>();
 		for (int dx = -1; dx <= 1; dx++) {
 			for (int dz = -1; dz <= 1; dz++) {
-				newGrid.add(new net.minecraft.world.level.ChunkPos(currentChunk.x + dx, currentChunk.z + dz));
+				newGrid.add(new net.minecraft.world.level.ChunkPos(chunkX + dx, chunkZ + dz));
 			}
-		}
-		if (newGrid.equals(this.projectileForcedChunks)) {
-			return;
 		}
 		ProjectileChunkLoadTracker.update(this, serverWorld, newGrid);
 		this.projectileForcedChunks = newGrid;
+		this.projectileForcedCenterX = chunkX;
+		this.projectileForcedCenterZ = chunkZ;
 	}
+
+	/** The chunk projectileForcedChunks is centred on (meaningless while that set is empty). */
+	private int projectileForcedCenterX;
+	private int projectileForcedCenterZ;
 
 	/** Called once by AbstractVehicleEntity's own tryFireWeapon(), immediately after this entity is actually spawned into the world - see tudursvehiclemod$updateProjectileForcedChunks()'s own doc for why this is needed at all. */
 	public void tudursvehiclemod$forceLoadSpawnChunk() {
@@ -2072,6 +2080,10 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 		if (this.level().isClientSide()) {
 			return;
 		}
+		if (!VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE.invoker().allowBlockDamage(this)) {
+			this.explosionDestroysBlocks = false;
+			this.flaming = false;
+		}
 		// ExplosionInWater is used instead of the
 		// plain Explosion power specifically when this torpedo is
 		// underwater, matching Readme_Weapon.txt's own documented
@@ -2426,6 +2438,9 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 	 * solid bedrock just because Piercing happens to be set. */
 	protected boolean tudursvehiclemod$tryPierceBlock(net.minecraft.world.phys.BlockHitResult blockHitResult) {
 		if (!(this.level() instanceof ServerLevel serverWorld)) {
+			return false;
+		}
+		if (!VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE.invoker().allowBlockDamage(this)) {
 			return false;
 		}
 		net.minecraft.core.BlockPos pos = blockHitResult.getBlockPos();

@@ -151,6 +151,8 @@ public class VehicleMod implements ModInitializer {
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register(com.example.tudursvehiclemod.entity.VehicleContacts::onLoad);
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_UNLOAD.register(com.example.tudursvehiclemod.entity.VehicleContacts::onUnload);
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_WORLD_TICK.register(com.example.tudursvehiclemod.entity.VehicleContacts::tudursvehiclemod$tickDebugDisplay);
+		// Un-forces the chunks released a moment ago - see ChunkForceTracker.scheduleUnforce().
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_WORLD_TICK.register(ChunkForceTracker::onEndWorldTick);
 		// Records projectile paths, and checks the end of a finished projectile's flight against vehicles once more - see LoadedProjectiles.onEndWorldTick().
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_WORLD_TICK.register(com.example.tudursvehiclemod.entity.LoadedProjectiles::onEndWorldTick);
 		// Nothing scheduled by a previous session (singleplayer: the same JVM) may run against the new one.
@@ -174,6 +176,8 @@ public class VehicleMod implements ModInitializer {
 			// Same reason: pending effects and force-load bookkeeping hold the ServerWorld and the entities/block entities of the session being left.
 			ServerTickTasks.clear();
 			com.example.tudursvehiclemod.command.WorldDataCleanupTask.cancelForServerStop();
+			// Before the world is saved: chunks released a moment ago are still force-loaded (ChunkForceTracker.scheduleUnforce()), and force-loading is saved with the world.
+			ChunkForceTracker.flushPendingUnforce();
 			ChunkForceTracker.clear();
 			com.example.tudursvehiclemod.entity.projectile.ProjectileChunkLoadTracker.clear();
 			com.example.tudursvehiclemod.entity.LoadedProjectiles.clear();

@@ -26,7 +26,8 @@
 10. 削除時の後始末とチャンクの強制ロード
 11. 外部から位置と姿勢を制御する
 12. サーバー接続時の定義の読み込みに関わる
-13. 制限事項
+13. そのほかのフック
+14. 制限事項
 
 ---
 
@@ -45,7 +46,11 @@
 | 独自の武器を追加 | `assets/<namespace>/weapons/<weapon_name>.txt`をjarに同梱 |
 | 車両以外(携帯装備など)から武器を発射 | `WeaponProjectileFactory`で弾体を生成し、`WeaponTargeting`で照準・ロックオンを行う |
 | HUDスクリプトに独自の変数を追加 | `HudVariableProvider.EVENT`にリスナーを登録する |
-| 機体の位置・姿勢を外部から直接制御 | `tudursvehiclemod$setExternalMotionController()`でコントローラーを設定 |
+| 機体の位置・姿勢を外部から直接制御 | `tudursvehiclemod$setExternalMotionController()`でコントローラーを設定(スロットル・操舵・照準も指定可) |
+| 弾のブロック破壊を条件付きで無効にする | `VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE`にリスナーを登録する |
+| ドローンセンターのパイロットを差し替える | `DroneCenterBlockEntity`の`tudursvehiclemod$createDummyPilot()`をオーバーライド |
+| 体力・燃料・武器の状態を直接設定 | `tudursvehiclemod$setHealth()`・`setFuel()`・`setWeaponStates()`など(「13. そのほかのフック」) |
+| コードで作った形状を命中判定に使う | `ServerObjModelHitboxes.registerGeneratedModel()` |
 | サーバー接続時の定義の読み込みに関わる(パック同期など) | `ClientDefinitionEvents.LOAD`/`MISMATCH`にリスナーを登録する |
 
 モデル表示・メッシュ命中判定・耐久値/破壊処理・座席・武装・HUD・半透明
@@ -89,7 +94,7 @@ dependencies {
 アドオン側のマッピングは前提MODと揃える必要はありません。Loomは`modImplementation`で
 指定したMODを中間名(intermediary)から自分のマッピングへ変換するため、Yarnマッピングの
 アドオンからも前提MODを使えます。Yarnマッピングで作られた既存のアドオンも、そのまま
-動作します(「13. 制限事項」参照)。
+動作します(「14. 制限事項」参照)。
 
 前提MODのjar名とMavenのバージョンには、ローダー名とMinecraftのバージョンが付きます
 (`tudursvehiclemod-1.1.1-fabric-1.21.11.jar`、バージョン`1.1.1-fabric-1.21.11`)。
@@ -622,7 +627,10 @@ ChunkForceTracker.releaseAllOwnedBy(serverLevel, this);
 ```
 
 - 要求は要求者(第3引数)ごとに数えられ、すべての要求者が取り下げたときに
-  強制ロードが解除されます。`setChunkForced(…, false)`を直接呼ぶと、ほかの機能
+  強制ロードが解除されます。解除は取り下げの1秒後(`UNFORCE_DELAY_TICKS`)で、その間に
+  もう一度要求されればそのまま引き継がれます(解除は読み込み中のチャンク数に比例して
+  重い処理のため、解除と再要求の繰り返しを避けています)。すぐに解除する必要がある場合は
+  `releaseImmediately()`を使ってください。`setChunkForced(…, false)`を直接呼ぶと、ほかの機能
   (近くを飛ぶ機体やドローンセンターなど)が使っているチャンクまで解除してしまいます
 - `/tvm unloadchunks`は、`ChunkForceTracker`経由で要求されている強制ロードだけを
   残します。`setChunkForced()`を直接呼んで強制ロードしたチャンクは、このコマンドで
@@ -736,6 +744,37 @@ vehicle.tudursvehiclemod$setExternalMotionController(null);
 - 破壊された機体の沈没など、他の処理との兼ね合いはアドオン側で判断してください
   (`tudursvehiclemod$isDestroyed()`のときに`false`を返す、など)
 
+### スロットル・操舵・照準も指定する
+
+コントローラーは、機体が報告するスロットル・操舵・座席ごとの照準も指定できます。
+位置と姿勢だけを動かすと、エンジン音・ローター・HUD・砲塔は元の入力のままになるため、
+見た目を動きに合わせたい場合に使います。いずれも既定では`null`(元のまま)を返します。
+
+| メソッド | 置き換わるもの |
+|---|---|
+| `tudursvehiclemod$throttle(vehicle)` | `getThrottle()`・`getSyncedThrottleInput()`。回転部品の速度も、機体の種類が独自に計算していなければこの値になります |
+| `tudursvehiclemod$steering(vehicle)` | `getSyncedSidewaysInput()` |
+| `tudursvehiclemod$aim(vehicle, seatIndex, tickProgress)` | その座席の乗員の視線。`{機体から見たヨー, ピッチ}`(度)を返します。その座席に追従する武器パーツ(`getWeaponAimYaw()`・`getWeaponAimPitch()`)がこの向きを使います。座席に乗員がいるときだけ呼ばれます |
+
+```java
+public class PathController implements AbstractVehicleEntity.ExternalMotionController {
+    @Override
+    public boolean tudursvehiclemod$tickMotion(AbstractVehicleEntity vehicle) { ... }
+
+    @Override
+    public Float tudursvehiclemod$throttle(AbstractVehicleEntity vehicle) {
+        return 0.8f;   // nullを返すと元の値
+    }
+
+    @Override
+    public float[] tudursvehiclemod$aim(AbstractVehicleEntity vehicle, int seatIndex, float tickProgress) {
+        return seatIndex == 1 ? new float[] {45f, -10f} : null;
+    }
+}
+```
+
+これらは描画のたびにも呼ばれます。重い処理は避けてください。
+
 ---
 
 ## 12. サーバー接続時の定義の読み込みに関わる
@@ -774,7 +813,90 @@ ClientDefinitions.reload();
 
 ---
 
-## 13. 制限事項
+## 13. そのほかのフック
+
+以前はMixinやAccessorでしか触れなかった箇所のうち、アドオンから使う場面のあるものを
+公開しています。Mixinで同じことをしている場合は、こちらへ置き換えると、前提MODの
+内部実装が変わっても影響を受けません。
+
+### 弾がブロックを壊すかどうかを決める
+
+`entity.projectile.VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE`(Fabric APIのイベント)は、
+弾が爆発するとき、およびブロックを貫通・破壊しようとするときに呼ばれます。`false`を返すと、
+その弾の爆発はブロックを壊さず、火も付けず、当たったブロックも貫通・破壊しません。
+エンティティや機体へのダメージは変わりません。
+
+```java
+VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE.register(projectile -> {
+    AbstractVehicleEntity shooter = projectile.tudursvehiclemod$getFiringVehicle(); // 機体以外が撃った弾はnull
+    return !(shooter instanceof MyAiVehicleEntity);
+});
+```
+
+- サーバー側で呼ばれます。リスナーのうち1つでも`false`を返せば無効になります
+
+### ドローンセンターのダミーパイロットを差し替える
+
+`DroneCenterBlockEntity`を継承したブロックエンティティは、
+`tudursvehiclemod$createDummyPilot(ServerLevel)`をオーバーライドすると、機体に乗せる
+パイロットを自分の`DummyPilotEntity`のサブクラスにできます。`null`(既定)を返すと
+組み込みのダミーパイロットになります。返したエンティティには、位置・スキン・名前などの
+設定が前提MOD側で適用され、スポーンと搭乗も前提MOD側で行われます。
+
+```java
+@Override
+protected DummyPilotEntity tudursvehiclemod$createDummyPilot(ServerLevel level) {
+    return new HostilePilotEntity(MyAddon.HOSTILE_PILOT, level);
+}
+```
+
+### ダミーパイロットの攻撃対象を読み書きする
+
+`DummyPilotEntity`の`tudursvehiclemod$getCurrentTarget()`と
+`tudursvehiclemod$setCurrentTarget(LivingEntity)`で、現在の攻撃対象を取得・指定できます。
+指定した対象も、通常の判定(死亡・射程外・視線が通らない)で外れます。`null`を指定すると、
+次の索敵で対象を探し直します。
+
+### 体力・燃料・武器の状態を直接設定する
+
+| メソッド | 内容 |
+|---|---|
+| `tudursvehiclemod$setHealth(float)` | 体力を0〜`getMaxHealth()`の範囲で設定します。0にしても破壊処理は行われず、破壊済みの機体も復活しません |
+| `tudursvehiclemod$setFuel(float)` | 燃料を0〜`getMaxFuel()`の範囲で設定します(`tudursvehiclemod$addFuel()`は加算のみ) |
+| `tudursvehiclemod$receiveAmmoSupply()` / `tudursvehiclemod$receiveHealthSupply()` | 補給機能を持つ機体が1秒ごとに相手へ行う補給1回分を、この機体に適用します |
+| `tudursvehiclemod$getWeaponState(int)` / `tudursvehiclemod$setWeaponState(int, WeaponState)` | 武器1つ分の状態(`AbstractVehicleEntity.WeaponState`: 弾倉・予備弾・リロード残り・次の発射位置・熱・モード)を取得・設定します |
+| `tudursvehiclemod$setWeaponStates(List<WeaponState>)` | 全武器の状態を、現在の定義の武器の順に一括で設定します |
+
+いずれもサーバー側で呼んでください。
+
+武器の状態は**武器の番号(定義内の順番)ごと**に保持されています。存在している間に
+武装構成が変わる機体(パーツの換装など)では、変更後に同じ番号が別の武器を指すため、
+変更前に`getWeaponState()`で読み、変更後の順番に並べ直して`setWeaponStates()`で
+設定してください。足りない要素は「空(新規スポーン時と同じ)」になります。
+
+### コードで作った形状を命中判定に使う
+
+OBJファイルとして存在しないモデル(実行時にパーツを組み合わせて作る機体など)は、
+`ServerObjModelHitboxes.registerGeneratedModel(modelId, groupedTriangles)`で命中判定用の
+形状を登録できます。乗り物定義の`model`がその`modelId`であれば、OBJのモデルと同じように
+判定されます。
+
+- `groupedTriangles`は「グループ名(名前なしは`""`)→三角形のリスト」です。三角形は
+  モデル空間の3頂点を並べた`float[9]`(x,y,z ×3)で、`getGroupedTriangles()`が返す形式と同じです
+- 登録は`/reload`をまたいで保持されます。同じIDでもう一度登録すると置き換わります。
+  不要になったら`unregisterGeneratedModel(modelId)`で削除してください
+
+### その他
+
+- `DroneCenterConfigScreen#getBlockPos()`(クライアント): 設定画面が対象にしているドローンセンターの位置
+- `AbstractVehicleEntity.tudursvehiclemod$clampYawOffsetFromDefault(rawYaw, aimRange)`:
+  砲塔のヨーを`default_yaw`からの差として`min_yaw`〜`max_yaw`に収める、前提MODと同じ計算。
+  武器の照準をオーバーライドするアドオンが、前提MODと結果を一致させるために使います
+
+
+---
+
+## 14. 制限事項
 
 ### バージョンの一致
 

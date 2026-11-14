@@ -26,7 +26,8 @@ mixins into it are needed.
 10. Cleanup on removal and chunk force-loading
 11. Controlling position and attitude from outside
 12. Taking part in loading definitions on a server
-13. Limitations
+13. Other hooks
+14. Limitations
 
 ---
 
@@ -45,7 +46,11 @@ All of the following are genuinely extensible.
 | Add your own weapons | Bundle `assets/<namespace>/weapons/<weapon_name>.txt` in your jar |
 | Fire weapons from outside a vehicle (handheld equipment, etc.) | Create projectiles with `WeaponProjectileFactory` and aim or lock on with `WeaponTargeting` |
 | Add your own variables to HUD scripts | Register a listener with `HudVariableProvider.EVENT` |
-| Control a vehicle's position and attitude directly | Set a controller with `tudursvehiclemod$setExternalMotionController()` |
+| Control a vehicle's position and attitude directly | Set a controller with `tudursvehiclemod$setExternalMotionController()` (it can give throttle, steering and aim too) |
+| Keep some projectiles from damaging blocks | Register a listener on `VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE` |
+| Replace a Drone Center's pilot | Override `tudursvehiclemod$createDummyPilot()` of `DroneCenterBlockEntity` |
+| Set health, fuel and weapon state directly | `tudursvehiclemod$setHealth()`, `setFuel()`, `setWeaponStates()` and others ("13. Other hooks") |
+| Hit detection for geometry built in code | `ServerObjModelHitboxes.registerGeneratedModel()` |
 | Take part in loading definitions on a server (pack sync, etc.) | Register listeners on `ClientDefinitionEvents.LOAD`/`MISMATCH` |
 
 The shared parts - model display, mesh hit detection, durability/destruction
@@ -89,7 +94,7 @@ examples here use Mojang names (`Level`, `Player`, `Vec3`, ...).
 The addon does not need the same mappings as the base mod. Loom remaps a
 `modImplementation` mod from intermediary names into the addon's own
 mappings, so a Yarn-mapped addon can use the base mod too, and existing
-addons built with Yarn keep working (see "13. Limitations").
+addons built with Yarn keep working (see "14. Limitations").
 
 The base mod's jar name and Maven version carry the loader and the
 Minecraft version (`tudursvehiclemod-1.1.1-fabric-1.21.11.jar`, version
@@ -633,7 +638,11 @@ ChunkForceTracker.releaseAllOwnedBy(serverLevel, this);
 ```
 
 - Requests are counted per requester (the third argument), and a chunk
-  stops being forced once every requester has withdrawn. Calling
+  stops being forced once every requester has withdrawn - one second later
+  (`UNFORCE_DELAY_TICKS`); if it is requested again within that second it
+  simply carries on (un-forcing costs in proportion to the number of loaded
+  chunks, so releasing and re-requesting over and over is avoided). Use
+  `releaseImmediately()` where it has to stop being forced at once. Calling
   `setChunkForced(…, false)` directly also releases chunks other features
   are using (a vehicle flying nearby, a Drone Center and so on).
 - `/tvm unloadchunks` keeps only the force-loading requested through
@@ -746,6 +755,37 @@ vehicle.tudursvehiclemod$setExternalMotionController(null);
 - Interaction with other behaviour, such as a destroyed vehicle sinking, is up to the addon
   (for example, return `false` while `tudursvehiclemod$isDestroyed()`)
 
+### Throttle, steering and aim
+
+A controller can also give the throttle and steering the vehicle reports, and where each seat is
+aiming. Moving only the position and attitude leaves the engine sound, rotors, HUD and turrets on the
+original inputs; these make them match the motion. Each returns `null` (leave as it is) by default.
+
+| Method | Replaces |
+|---|---|
+| `tudursvehiclemod$throttle(vehicle)` | `getThrottle()` and `getSyncedThrottleInput()`. The speed of spinning parts follows it too, unless the vehicle type computes its own |
+| `tudursvehiclemod$steering(vehicle)` | `getSyncedSidewaysInput()` |
+| `tudursvehiclemod$aim(vehicle, seatIndex, tickProgress)` | The view of that seat's occupant: `{yaw relative to the vehicle, pitch}` in degrees. Weapon parts following the seat (`getWeaponAimYaw()`/`getWeaponAimPitch()`) use it. Only asked while the seat has an occupant |
+
+```java
+public class PathController implements AbstractVehicleEntity.ExternalMotionController {
+    @Override
+    public boolean tudursvehiclemod$tickMotion(AbstractVehicleEntity vehicle) { ... }
+
+    @Override
+    public Float tudursvehiclemod$throttle(AbstractVehicleEntity vehicle) {
+        return 0.8f;   // null = the vehicle's own value
+    }
+
+    @Override
+    public float[] tudursvehiclemod$aim(AbstractVehicleEntity vehicle, int seatIndex, float tickProgress) {
+        return seatIndex == 1 ? new float[] {45f, -10f} : null;
+    }
+}
+```
+
+These are also called for every frame drawn; keep them cheap.
+
 ---
 
 ## 12. Taking part in loading definitions on a server
@@ -783,7 +823,88 @@ ClientDefinitions.reload();
 
 ---
 
-## 13. Limitations
+## 13. Other hooks
+
+Places that used to be reachable only with a Mixin or an Accessor, opened up where addons have a use
+for them. If a Mixin of yours does the same thing, switching to these keeps it working when the base
+mod's internals change.
+
+### Deciding whether a projectile damages blocks
+
+`entity.projectile.VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE` (a Fabric API event) is asked when a
+projectile is about to explode and when it is about to pierce or break a block. Returning `false` makes
+its explosion break no blocks and start no fires, and keeps it from piercing or breaking the block it
+struck. Damage to entities and vehicles is unchanged.
+
+```java
+VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE.register(projectile -> {
+    AbstractVehicleEntity shooter = projectile.tudursvehiclemod$getFiringVehicle(); // null if not fired by a vehicle
+    return !(shooter instanceof MyAiVehicleEntity);
+});
+```
+
+- Called on the server. One listener returning `false` is enough
+
+### Replacing a Drone Center's dummy pilot
+
+A block entity extending `DroneCenterBlockEntity` can override
+`tudursvehiclemod$createDummyPilot(ServerLevel)` to seat its own `DummyPilotEntity` subclass in the
+vehicle. `null` (the default) gives the built-in pilot. The base mod applies the position, skin, name
+and the other pilot settings to the returned entity, spawns it and seats it.
+
+```java
+@Override
+protected DummyPilotEntity tudursvehiclemod$createDummyPilot(ServerLevel level) {
+    return new HostilePilotEntity(MyAddon.HOSTILE_PILOT, level);
+}
+```
+
+### Reading and setting a dummy pilot's target
+
+`DummyPilotEntity`'s `tudursvehiclemod$getCurrentTarget()` and
+`tudursvehiclemod$setCurrentTarget(LivingEntity)` read and set what it is attacking. A target set this
+way is still dropped by the usual checks (dead, out of range, out of sight). Setting `null` makes it
+look for a target again on its next search.
+
+### Setting health, fuel and weapon state directly
+
+| Method | What it does |
+|---|---|
+| `tudursvehiclemod$setHealth(float)` | Sets health within 0..`getMaxHealth()`. Setting 0 does not destroy the vehicle, and a destroyed one is not revived |
+| `tudursvehiclemod$setFuel(float)` | Sets fuel within 0..`getMaxFuel()` (`tudursvehiclemod$addFuel()` only adds) |
+| `tudursvehiclemod$receiveAmmoSupply()` / `tudursvehiclemod$receiveHealthSupply()` | Applies one step of what a supplying vehicle gives a recipient each second |
+| `tudursvehiclemod$getWeaponState(int)` / `tudursvehiclemod$setWeaponState(int, WeaponState)` | Reads/sets one weapon's state (`AbstractVehicleEntity.WeaponState`: magazine, reserve, reload ticks left, next firing position, heat, mode) |
+| `tudursvehiclemod$setWeaponStates(List<WeaponState>)` | Sets every weapon's state at once, in the order of the current definition's weapons |
+
+Call all of these on the server.
+
+Weapon state is kept **by weapon index** (the order in the definition). For a vehicle whose weapons
+change while it exists (swapping parts, say), the same index means a different weapon afterwards: read
+the states with `getWeaponState()` before the change, reorder them for the new list and set them with
+`setWeaponStates()`. A missing entry leaves that weapon empty, as on a newly spawned vehicle.
+
+### Hit detection for geometry built in code
+
+A model that doesn't exist as an OBJ file (a vehicle assembled from parts at run time, say) can have
+its hit-detection geometry registered with
+`ServerObjModelHitboxes.registerGeneratedModel(modelId, groupedTriangles)`. A vehicle definition whose
+`model` is that `modelId` is then hit-tested like any OBJ model.
+
+- `groupedTriangles` maps a group name (`""` for unnamed) to a list of triangles, each a `float[9]` of
+  three x,y,z corners in model space - the form `getGroupedTriangles()` returns
+- It stays registered across `/reload`; registering the same id again replaces it. Remove it with
+  `unregisterGeneratedModel(modelId)` when it is no longer needed
+
+### Others
+
+- `DroneCenterConfigScreen#getBlockPos()` (client): the Drone Center the screen is configuring
+- `AbstractVehicleEntity.tudursvehiclemod$clampYawOffsetFromDefault(rawYaw, aimRange)`: the base mod's
+  own clamp of a turret yaw, as an offset from `default_yaw` held within `min_yaw`..`max_yaw` - for an
+  addon that overrides weapon aiming and has to agree with it
+
+---
+
+## 14. Limitations
 
 ### Version matching
 

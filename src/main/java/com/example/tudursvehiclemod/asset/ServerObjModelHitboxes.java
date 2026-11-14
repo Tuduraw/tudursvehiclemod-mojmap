@@ -428,7 +428,35 @@ public final class ServerObjModelHitboxes {
 		getGroupedTriangles(modelId);
 	}
 
+	/** Models whose geometry an addon builds in code rather than shipping as an OBJ file - see registerGeneratedModel(). Kept apart from the caches, so it survives clearCaches() (a /reload). */
+	private static final Map<Identifier, Map<String, List<float[]>>> GENERATED_MODELS = new ConcurrentHashMap<>();
+
+	/** Gives modelId's hit-detection geometry directly, for a model that exists only in code (assembled from parts at run time, say): group name ("" for unnamed) -> triangles, each a float[9] of three x,y,z corners in model space - the same form getGroupedTriangles() returns. A vehicle definition whose "model" is modelId is then hit-tested against it like any OBJ model. Stays registered across /reload; registering the same id again replaces it. */
+	public static void registerGeneratedModel(Identifier modelId, Map<String, List<float[]>> groupedTriangles) {
+		GENERATED_MODELS.put(modelId, groupedTriangles);
+		tudursvehiclemod$dropCached(modelId);
+	}
+
+	/** Removes a model given with registerGeneratedModel(). */
+	public static void unregisterGeneratedModel(Identifier modelId) {
+		if (GENERATED_MODELS.remove(modelId) != null) {
+			tudursvehiclemod$dropCached(modelId);
+		}
+	}
+
+	private static void tudursvehiclemod$dropCached(Identifier modelId) {
+		GROUPED_CACHE.remove(modelId);
+		WHOLE_MESH_CACHE.remove(modelId);
+		String prefix = modelId + "|";
+		EXCLUDING_MESH_CACHE.keySet().removeIf(key -> key.startsWith(prefix));
+		PART_MESH_CACHE.keySet().removeIf(key -> key.startsWith(prefix));
+	}
+
 	private static Optional<Map<String, List<float[]>>> tudursvehiclemod$loadOrComputeGrouped(Identifier modelId) {
+		Map<String, List<float[]>> generated = GENERATED_MODELS.get(modelId);
+		if (generated != null) {
+			return generated.isEmpty() ? Optional.empty() : Optional.of(generated);
+		}
 		Path modelFile = tudursvehiclemod$resolveModelPath(modelId);
 		if (modelFile == null) {
 			LOGGER.warn("Could not locate model file for {} - it will have no custom hit detection at all", modelId);

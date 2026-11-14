@@ -20,6 +20,9 @@ public final class ProjectileChunkLoadTracker {
 
 	private static final Map<VehicleProjectileEntity, Set<ChunkPos>> ACTIVE = new LinkedHashMap<>();
 
+	/** The sum of every tracked projectile's chunk count (what the limit is compared against), kept up to date as entries change instead of being added up again on every update. */
+	private static int totalChunks;
+
 	/** Called once per tick from a projectile's own tudursvehiclemod$updateProjectileForcedChunks() (and once at spawn, from tudursvehiclemod$forceLoadSpawnChunk()) with that projectile's own newly-computed chunk grid - reconciles the actual ChunkForceTracker claims (releasing chunks no longer in newChunks, requesting ones newly added) against whatever this projectile was PREVIOUSLY tracked as holding, then enforces projectileForcedChunkLimit across every currently-tracked projectile combined, evicting the oldest-spawned one(s) (see this whole class's own doc for why "oldest-spawned" specifically) until the total is back within budget. */
 	public static void update(VehicleProjectileEntity projectile, ServerLevel world, Set<ChunkPos> newChunks) {
 		int limit = VehicleModServerConfig.get().projectileForcedChunkLimit;
@@ -43,22 +46,23 @@ public final class ProjectileChunkLoadTracker {
 		}
 		// Deliberately put() on the existing key rather than remove()+put() - see this class's own doc for why preserving this projectile's own original spawn-order position (not moving it to "most recently updated") matters here.
 		ACTIVE.put(projectile, newChunks);
+		totalChunks += newChunks.size() - (previousChunks == null ? 0 : previousChunks.size());
 		tudursvehiclemod$enforceLimit(world, limit);
 	}
 
 	/** Evicts the oldest-spawned tracked projectile(s) - see this class's own doc - until the combined total chunk count across every remaining one is back within limit. */
 	private static void tudursvehiclemod$enforceLimit(ServerLevel world, int limit) {
-		int total = 0;
-		for (Set<ChunkPos> chunks : ACTIVE.values()) {
-			total += chunks.size();
+		if (totalChunks <= limit) {
+			return;
 		}
 		java.util.Iterator<Map.Entry<VehicleProjectileEntity, Set<ChunkPos>>> iterator = ACTIVE.entrySet().iterator();
-		while (total > limit && iterator.hasNext()) {
+		while (totalChunks > limit && iterator.hasNext()) {
 			Map.Entry<VehicleProjectileEntity, Set<ChunkPos>> oldest = iterator.next();
+			// At once, not after ChunkForceTracker's usual delay: within that delay the projectile would reach its next chunk, ask again as the newest one, and the limit would never take effect.
 			for (ChunkPos chunk : oldest.getValue()) {
-				ChunkForceTracker.release(world, chunk, oldest.getKey());
+				ChunkForceTracker.releaseImmediately(world, chunk, oldest.getKey());
 			}
-			total -= oldest.getValue().size();
+			totalChunks -= oldest.getValue().size();
 			iterator.remove();
 		}
 	}
@@ -67,6 +71,7 @@ public final class ProjectileChunkLoadTracker {
 	public static void remove(VehicleProjectileEntity projectile, ServerLevel world) {
 		Set<ChunkPos> chunks = ACTIVE.remove(projectile);
 		if (chunks != null) {
+			totalChunks -= chunks.size();
 			for (ChunkPos chunk : chunks) {
 				ChunkForceTracker.release(world, chunk, projectile);
 			}
@@ -76,5 +81,6 @@ public final class ProjectileChunkLoadTracker {
 	/** Called when the server stops - entries would otherwise keep the session's projectiles (and through them, its ServerWorld) reachable into the next one. */
 	public static void clear() {
 		ACTIVE.clear();
+		totalChunks = 0;
 	}
 }

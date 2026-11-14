@@ -656,6 +656,20 @@ public class CarEntity extends AbstractVehicleEntity {
 	/** Degrees of tilt per block of height difference between the two sample points. */
 	protected static final float TILT_DEGREES_PER_BLOCK = 45f;
 
+	/** How long (ticks) a vehicle standing still keeps its last ground samples - see updateCosmeticTilt(). */
+	private static final int TILT_RESAMPLE_INTERVAL_TICKS = 20;
+	/** Where, facing where, for which definition and when the ground samples below were taken. */
+	private VehicleDefinition tiltSampleDefinition;
+	private double tiltSampleX;
+	private double tiltSampleY;
+	private double tiltSampleZ;
+	private float tiltSampleYaw;
+	private int tiltSampleTick;
+	private float tiltFrontOffset;
+	private float tiltBackOffset;
+	private float tiltRightOffset;
+	private float tiltLeftOffset;
+
 	/** Purely cosmetic, per your request: samples this vehicle's own FULL configured width/height (def.width()/height() * scale). */
 	protected void updateCosmeticTilt(VehicleDefinition def, float maxTiltDegrees, float smoothing) {
 		float fullWidth = Math.max(0.1f, def.width() * def.scale());
@@ -676,10 +690,24 @@ public class CarEntity extends AbstractVehicleEntity {
 		double rightX = Math.cos(yawRad);
 		double rightZ = Math.sin(yawRad);
 
-		float frontOffset = sampleGroundOffset(this.getX() + forwardX * half, this.getZ() + forwardZ * half, def.stepHeight());
-		float backOffset = sampleGroundOffset(this.getX() - forwardX * half, this.getZ() - forwardZ * half, def.stepHeight());
-		float rightOffset = sampleGroundOffset(this.getX() + rightX * rollHalf, this.getZ() + rightZ * rollHalf, def.stepHeight());
-		float leftOffset = sampleGroundOffset(this.getX() - rightX * rollHalf, this.getZ() - rightZ * rollHalf, def.stepHeight());
+		// The four samples are eight collision queries against the world; a vehicle that hasn't moved or turned since they were taken would get the same answers. A parked vehicle (most vehicles, most of the time) keeps its last ones, taken again every TILT_RESAMPLE_INTERVAL_TICKS in case the ground under it changed.
+		if (this.tiltSampleDefinition != def || this.getX() != this.tiltSampleX || this.getY() != this.tiltSampleY || this.getZ() != this.tiltSampleZ
+				|| this.getYRot() != this.tiltSampleYaw || this.tickCount - this.tiltSampleTick >= TILT_RESAMPLE_INTERVAL_TICKS || this.tickCount < this.tiltSampleTick) {
+			this.tiltSampleDefinition = def;
+			this.tiltSampleX = this.getX();
+			this.tiltSampleY = this.getY();
+			this.tiltSampleZ = this.getZ();
+			this.tiltSampleYaw = this.getYRot();
+			this.tiltSampleTick = this.tickCount;
+			this.tiltFrontOffset = sampleGroundOffset(this.getX() + forwardX * half, this.getZ() + forwardZ * half, def.stepHeight());
+			this.tiltBackOffset = sampleGroundOffset(this.getX() - forwardX * half, this.getZ() - forwardZ * half, def.stepHeight());
+			this.tiltRightOffset = sampleGroundOffset(this.getX() + rightX * rollHalf, this.getZ() + rightZ * rollHalf, def.stepHeight());
+			this.tiltLeftOffset = sampleGroundOffset(this.getX() - rightX * rollHalf, this.getZ() - rightZ * rollHalf, def.stepHeight());
+		}
+		float frontOffset = this.tiltFrontOffset;
+		float backOffset = this.tiltBackOffset;
+		float rightOffset = this.tiltRightOffset;
+		float leftOffset = this.tiltLeftOffset;
 
 		// An unclimbable wall should be
 		// EXCLUDED from the tilt calculation entirely (contributing no

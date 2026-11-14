@@ -53,31 +53,40 @@ public class CarrierRunwayPlatformEntity extends PathfinderMob {
 	/** Every 100 ticks (5 seconds - frequent enough to clean up promptly, cheap enough to cost nothing meaningful), verifies the owning mothership is still actually present; self-discards if not, rather than persisting forever as an invisible, inert leftover. */
 	@Override
 	public void tick() {
-		super.tick();
-		if (this.level().isClientSide()) {
-			// Independently recomputes this tile's own position every client tick (same deterministic formula the server uses), rather than relying on synced position packets - reduces per-tile network cost and eliminates client-side "briefly falls through, then snaps back" flicker in local physics prediction. Server-side authority is unchanged.
-			int mothershipEntityId = this.entityData.get(MOTHERSHIP_ENTITY_ID);
-			if (mothershipEntityId < 0) {
-				return;
-			}
-			if (!(this.level().getEntity(mothershipEntityId) instanceof AbstractVehicleEntity mothership)) {
-				return;
-			}
-			int runwayIndex = this.entityData.get(RUNWAY_INDEX);
-			java.util.List<com.example.tudursvehiclemod.asset.RunwayDefinition> runways = mothership.getDefinition().runways();
-			if (runwayIndex < 0 || runwayIndex >= runways.size()) {
-				return;
-			}
-			com.example.tudursvehiclemod.asset.RunwayDefinition runway = runways.get(runwayIndex)
-					.tudursvehiclemod$withHatchProgress(mothership.tudursvehiclemod$getRunwayHatchProgress(runwayIndex));
-			net.minecraft.world.phys.Vec3 tileWorldPos = AbstractVehicleEntity.tudursvehiclemod$computeCarrierRunwayTileWorldPosClientSide(
-					mothership, runway, this.getBbWidth(), this.entityData.get(TILE_INDEX));
-			if (tileWorldPos == null) {
-				return;
-			}
-			this.setPos(tileWorldPos.x, tileWorldPos.y - this.getBbHeight(), tileWorldPos.z);
+		if (!this.level().isClientSide()) {
+			this.tudursvehiclemod$serverTick();
 			return;
 		}
+		super.tick();
+		// Independently recomputes this tile's own position every client tick (same deterministic formula the server uses), rather than relying on synced position packets - reduces per-tile network cost and eliminates client-side "briefly falls through, then snaps back" flicker in local physics prediction. Server-side authority is unchanged.
+		int mothershipEntityId = this.entityData.get(MOTHERSHIP_ENTITY_ID);
+		if (mothershipEntityId < 0) {
+			return;
+		}
+		if (!(this.level().getEntity(mothershipEntityId) instanceof AbstractVehicleEntity mothership)) {
+			return;
+		}
+		int runwayIndex = this.entityData.get(RUNWAY_INDEX);
+		java.util.List<com.example.tudursvehiclemod.asset.RunwayDefinition> runways = mothership.getDefinition().runways();
+		if (runwayIndex < 0 || runwayIndex >= runways.size()) {
+			return;
+		}
+		com.example.tudursvehiclemod.asset.RunwayDefinition runway = runways.get(runwayIndex)
+				.tudursvehiclemod$withHatchProgress(mothership.tudursvehiclemod$getRunwayHatchProgress(runwayIndex));
+		net.minecraft.world.phys.Vec3 tileWorldPos = AbstractVehicleEntity.tudursvehiclemod$computeCarrierRunwayTileWorldPosClientSide(
+				mothership, runway, this.getBbWidth(), this.entityData.get(TILE_INDEX));
+		if (tileWorldPos == null) {
+			return;
+		}
+		this.setPos(tileWorldPos.x, tileWorldPos.y - this.getBbHeight(), tileWorldPos.z);
+	}
+
+	/** The server side of tick(), without the mob tick (super.tick()) a tile has no use for.
+	 *
+	 * <p>A tile never moves by itself - its mothership places it every tick and zeroes its velocity (AbstractVehicleEntity's own tudursvehiclemod$updateCarrierRunwayTileSet()) - it has no AI, takes no damage and carries nothing. The full mob tick still ran its movement against the blocks around it, the block effects, the water and suffocation checks and the AI bookkeeping for every tile, every tick: measured, a parked carrier's tiles cost several times what the carrier itself did. What other entities need from a tile is untouched by leaving that out: standing on it and being blocked by it come from its bounding box (canBeCollidedWith()), and pushing whatever overlaps it sideways is still done here (pushEntities(), exactly as the mob tick did it). */
+	private void tudursvehiclemod$serverTick() {
+		this.firstTick = false;
+		this.pushEntities();
 		if (this.mothershipUuid == null) {
 			return;
 		}

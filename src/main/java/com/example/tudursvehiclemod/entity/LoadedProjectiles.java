@@ -145,6 +145,12 @@ public final class LoadedProjectiles {
 		return loaded;
 	}
 
+	/** The same set as in(), without first dropping the entries of removed projectiles (which costs a pass over all of them): for a caller that skips removed ones itself and is called many times a tick. Entries of removed projectiles are still dropped once a tick, by onEndWorldTick(). */
+	static Set<Projectile> loaded(ServerLevel world) {
+		Set<Projectile> loaded = LOADED.get(world);
+		return loaded == null ? Set.of() : loaded;
+	}
+
 	public static void clear() {
 		LOADED.clear();
 		PATHS.clear();

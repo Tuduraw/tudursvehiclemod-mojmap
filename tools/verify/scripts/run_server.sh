@@ -10,7 +10,7 @@ start() { rm -f logs/latest.log; java -Xmx3G -jar fabric-server-launch.jar nogui
 stop() { $R "save-all flush" "stop" >/dev/null; wait $PID; }
 
 start 1
-$R "gamerule doMobSpawning false" "gamerule doDaylightCycle false" "gamerule doWeatherCycle false" "time set 6000" >/dev/null
+$R "gamerule spawn_mobs false" "gamerule advance_time false" "gamerule advance_weather false" "time set 6000" >/dev/null
 $R "tvmtest run $N ${LIMIT:-99}" ; waitlog "DONE $N " 5400 || exit 1
 $R "tvmtest park $N-park" ; waitlog "DONE $N-park " 600 || exit 1
 cp logs/latest.log log-run.log

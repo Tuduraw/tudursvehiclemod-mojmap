@@ -84,6 +84,21 @@ LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" \
 | `/tvmtest park <名前>` / `parkcheck <名前>` | 再起動前後の記録 |
 | `/tvmtest gallery` / `view <i>` / `fire <i>` / `ride <i>` / `rideend <i>` | クライアント用 |
 | `/tvmtest probe` | 搭乗・発射の簡易確認 |
+| `/tvmtest stress <名前> <セット数> <tick数> [fire\|manned\|idle]` | 負荷の計測(下記) |
+
+## 負荷の計測
+
+`/tvmtest stress <名前> <セット数> <tick数> [モード]`は、全定義の機体を`セット数`台ずつ格子状に並べ、サーバーの1tickの所要時間(`START_SERVER_TICK`〜`END_SERVER_TICK`)を計測して`tvmtest-<名前>.json`に出力します(平均・中央値・95%点・最大)。2つのjarの処理の重さを比べるためのものです。
+
+| モード | 内容 |
+|---|---|
+| `fire`(既定) | 全座席にダミーパイロットを乗せ、標的を置き、全武装を撃ち続ける |
+| `manned` | ダミーパイロットと標的だけ(発射はダミーパイロット任せ) |
+| `idle` | 無人の機体を並べるだけ |
+
+- 前回の機体が残っていると結果が変わるため、毎回ワールド(`world/`)を消してから実行してください
+- `fire`は乱数の影響が大きいので、複数回実行して比べてください
+- どこが重いかは、サーバーを`-XX:StartFlightRecording=filename=x.jfr,settings=profile`付きで起動し、`jfr print --events jdk.ExecutionSample x.jfr`の`Server thread`の標本を集計すると分かります
 
 ## 注意
 

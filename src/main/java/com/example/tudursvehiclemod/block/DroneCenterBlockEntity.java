@@ -418,6 +418,11 @@ public class DroneCenterBlockEntity extends BlockEntity implements MenuProvider,
 	/** Brings the actual spawned pilot into line with this center's own current settings - spawning one when it should have one and doesn't, removing it when it shouldn't, and keeping its skin/name current. Called every tick from tick() (cheap: almost always just a couple of reference checks) so it also recovers automatically after a world reload, after the vehicle is re-found following a chunk unload, and after the pilot is lost for any reason.
 	 *
 	 * Whoever currently occupies seat 0 is forcibly dismounted first - the dummy pilot always wins that seat while enabled. */
+	/** The pilot entity this center seats in its vehicle - null (the default) for the built-in DummyPilotEntity. An addon's own center returns its own DummyPilotEntity subclass here (created, not yet spawned; position, skin, name and the rest of this center's pilot settings are applied to it afterwards). */
+	protected com.example.tudursvehiclemod.entity.DummyPilotEntity tudursvehiclemod$createDummyPilot(ServerLevel world) {
+		return null;
+	}
+
 	private void tudursvehiclemod$updateDummyPilot(ServerLevel world) {
 		boolean shouldHavePilot = this.dummyPilotEnabled && this.active && !this.redstoneControlEnabled;
 		com.example.tudursvehiclemod.entity.AbstractVehicleEntity vehicle =
@@ -453,9 +458,11 @@ public class DroneCenterBlockEntity extends BlockEntity implements MenuProvider,
 			currentOccupant.stopRiding();
 		}
 
-		com.example.tudursvehiclemod.entity.DummyPilotEntity pilot =
-				new com.example.tudursvehiclemod.entity.DummyPilotEntity(
-						com.example.tudursvehiclemod.registry.ModEntityTypes.DUMMY_PILOT, world);
+		com.example.tudursvehiclemod.entity.DummyPilotEntity pilot = this.tudursvehiclemod$createDummyPilot(world);
+		if (pilot == null) {
+			pilot = new com.example.tudursvehiclemod.entity.DummyPilotEntity(
+					com.example.tudursvehiclemod.registry.ModEntityTypes.DUMMY_PILOT, world);
+		}
 		pilot.snapTo(vehicle.getX(), vehicle.getY(), vehicle.getZ(), vehicle.getYRot(), 0f);
 		pilot.tudursvehiclemod$setSkinId(this.tudursvehiclemod$getDummyPilotSkinId());
 		pilot.tudursvehiclemod$setNameSettings(this.dummyPilotNameVisible, this.dummyPilotName);

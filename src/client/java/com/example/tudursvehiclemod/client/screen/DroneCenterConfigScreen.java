@@ -27,6 +27,11 @@ public class DroneCenterConfigScreen extends Screen {
 	private Button activeToggleButton;
 	private Button redstoneControlToggleButton;
 
+	/** The Drone Center this screen configures - for an addon that adds its own widgets to the screen (for its own DroneCenterBlock subclass, say). */
+	public net.minecraft.core.BlockPos getBlockPos() {
+		return new net.minecraft.core.BlockPos(this.blockX, this.blockY, this.blockZ);
+	}
+
 	public DroneCenterConfigScreen(int blockX, int blockY, int blockZ,
 			float speedFraction, float orbitAltitude, float radiusMultiplier, boolean active,
 			boolean redstoneControlEnabled, String formationConfig) {
