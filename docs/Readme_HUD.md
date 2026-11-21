@@ -201,6 +201,7 @@ If = lock_progress > 0 && !locked
 | `manual_mode` | マニュアルモード中か(0/1。Aircraft/VTOLのみ意味を持つ) |
 | `stalling` | 失速中か(0/1。Aircraft/VTOLのみ意味を持つ) |
 | `gear_deployed` | 着陸装置が展開しているか(0/1) |
+| `standby` | 航空機が待機モード中か(0/1) |
 
 ### 武装(選択中の武器について)
 | 変数名 | 内容 |

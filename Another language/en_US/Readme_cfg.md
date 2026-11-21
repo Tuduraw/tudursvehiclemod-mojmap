@@ -200,8 +200,9 @@ with one setting. Default is `beam`.
     mountain: an LOD mod's terrain isn't part of the game's own depth
     information.
   - With the game's own fog on, vehicles beyond the render distance are
-    lost in it. Turn vanilla fog off in the LOD mod (Distant Horizons does
-    by default).
+    lost in it. Turn vanilla fog off in the LOD mod.
+  - With Distant Horizons it has been reported not to work (cause not
+    pinned down - see "Known incompatibilities" in the README).
   - While this is on, the game's furthest draw depth (normally four times
     the render distance) is extended to the distance below.
 
@@ -273,6 +274,15 @@ with no restart.
   is released, and those projectiles are removed - without exploding -
   the next time their chunk loads.
 
+
+### Autopilot collision avoidance (`autopilotCollisionAvoidance`) - immediate
+
+- Default: `true`
+- An aircraft flying itself (a CAS strike, a carrier's aircraft, a formation wingman, a drone) treats each other vehicle ahead of it (wingmen, the mothership, ships, ground vehicles) as the box around its model. When it would enter that box - grown by its own size plus a 3-block margin - within about 2 seconds (40 ticks), it steers out of it. It never dodges downward away from a vehicle below it (it climbs instead).
+- While landing on or launching from its mothership, that mothership is not avoided.
+- Never applies to an aircraft a player is flying, one on the ground, or a destroyed one.
+- Avoidance shifts the course (velocity) only, not the nose; the autopilot brings the aircraft back to its route afterwards.
+- With tight formation spacing or a crowded deck, aircraft may push each other around; turn it off in that case.
 
 ### Far vehicle sync (`farVehicleSyncEnabled`) - immediate
 

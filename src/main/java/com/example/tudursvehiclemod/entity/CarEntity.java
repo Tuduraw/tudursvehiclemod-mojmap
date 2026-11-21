@@ -617,6 +617,7 @@ public class CarEntity extends AbstractVehicleEntity {
 		this.wheelRotation += (float) this.getDeltaMovement().horizontalDistance() * 20f;
 
 		this.move(MoverType.SELF, this.getDeltaMovement());
+		this.tudursvehiclemod$checkMobCollision(def);
 
 		// A separate, deliberately lightweight water-surface check, NOT a refactor of that method's own more careful multi-corner touching logic - a cosmetic wake ripple doesn't need pixel-exact agreement with the damage boundary, and leaving that already-carefully-tuned method (see its own doc for the bugs it fixed) completely untouched avoids any risk of disturbing it. Called AFTER this tick's own move() above (not from inside updateSubmersibleImmobilization(), which itself runs much earlier in this same method, before this tick's own movement has actually happened yet) - tudursvehiclemod$getActualForwardSpeed() specifically needs that ordering, see its own doc for why.
 		java.util.OptionalDouble carWaterSurfaceY = this.tudursvehiclemod$findWaterSurfaceYForWake();
@@ -628,6 +629,76 @@ public class CarEntity extends AbstractVehicleEntity {
 		}
 
 		updateCosmeticTilt(def, MAX_COSMETIC_TILT_DEGREES, 0.2f);
+	}
+
+	/** Below this speed (blocks/tick, relative to the mob) running into a mob does nothing (tudursvehiclemod$checkMobCollision()). About 14 km/h. */
+	protected static final double MOB_COLLISION_MIN_SPEED = 0.2;
+	/** Damage per block/tick of relative speed, to the mob - and, unless the vehicle is a tank (weight_type tank), to the vehicle too. A halftrack at full speed (0.75 blocks/tick) does about 22. */
+	protected static final float MOB_COLLISION_DAMAGE_PER_SPEED = 30.0f;
+	/** Ticks before the same mob can be hit again (while pushing through it, it stays in contact for several ticks). */
+	protected static final int MOB_COLLISION_COOLDOWN_TICKS = 10;
+	/** When each mob was last hit (entity id -> game time). */
+	private final java.util.Map<Integer, Long> mobCollisionTimes = new java.util.HashMap<>();
+
+	/** Running into a mob (or a player on foot) fast enough hurts both, as an aircraft's collisions do (AircraftEntity.tudursvehiclemod$checkEntityCrashDamage()) - except that a tank (weight_type tank) takes no damage itself. The mob is knocked along the way the vehicle is going. Found by the vehicle's model shape against the mob's box (VehicleContacts); damage is credited to the driver, so a mob run down by a player drops what a player kill does. Collisions with other vehicles aren't handled here. */
+	protected void tudursvehiclemod$checkMobCollision(VehicleDefinition def) {
+		if (!(this.level() instanceof net.minecraft.server.level.ServerLevel serverWorld) || this.tudursvehiclemod$isDestroyed()) {
+			return;
+		}
+		Vec3 motion = this.getDeltaMovement();
+		if (motion.horizontalDistanceSqr() < MOB_COLLISION_MIN_SPEED * MOB_COLLISION_MIN_SPEED) {
+			return;
+		}
+		long now = serverWorld.getGameTime();
+		if (!this.mobCollisionTimes.isEmpty()) {
+			this.mobCollisionTimes.values().removeIf(time -> now - time > MOB_COLLISION_COOLDOWN_TICKS);
+		}
+		java.util.List<net.minecraft.world.entity.LivingEntity> hit = new java.util.ArrayList<>();
+		if (VehicleContacts.tudursvehiclemod$voxels(def).isEmpty()) {
+			// Before the shape grid exists: the entity box.
+			for (net.minecraft.world.entity.Entity e : this.level().getEntities(this, this.getBoundingBox().inflate(0.1), e -> e instanceof net.minecraft.world.entity.LivingEntity)) {
+				hit.add((net.minecraft.world.entity.LivingEntity) e);
+			}
+		} else {
+			for (VehicleContacts.Contact contact : VehicleContacts.contactsFor(this)) {
+				if (contact.other() instanceof net.minecraft.world.entity.LivingEntity living) {
+					hit.add(living);
+				}
+			}
+		}
+		boolean tank = def.weightType() == com.example.tudursvehiclemod.asset.WeightType.TANK;
+		net.minecraft.world.entity.Entity driver = this.getControllingPassenger();
+		for (net.minecraft.world.entity.LivingEntity mob : hit) {
+			if (!mob.isAlive() || mob.isSpectator() || mob.isPassenger() || this.hasPassenger(mob) || this.tudursvehiclemod$isRecentlyDismounted(mob)
+					|| this.mobCollisionTimes.containsKey(mob.getId())) {
+				continue;
+			}
+			Vec3 relative = motion.subtract(mob.getDeltaMovement());
+			double speed = Math.sqrt(relative.x * relative.x + relative.z * relative.z);
+			if (speed < MOB_COLLISION_MIN_SPEED) {
+				continue;
+			}
+			// Only what the vehicle drives into: a mob behind or beside it, that it is moving away from, isn't hit.
+			Vec3 toMob = mob.position().subtract(this.position());
+			if (toMob.x * motion.x + toMob.z * motion.z <= 0) {
+				continue;
+			}
+			this.mobCollisionTimes.put(mob.getId(), now);
+			float damage = (float) (speed * MOB_COLLISION_DAMAGE_PER_SPEED);
+			net.minecraft.world.damagesource.DamageSource source = driver instanceof net.minecraft.world.entity.player.Player player
+					? this.damageSources().playerAttack(player)
+					: driver instanceof net.minecraft.world.entity.LivingEntity living
+							? this.damageSources().mobAttack(living)
+							: this.damageSources().flyIntoWall();
+			mob.hurtServer(serverWorld, source, damage);
+			// Knocked along the way the vehicle is going, a little up.
+			Vec3 push = new Vec3(motion.x, 0, motion.z).normalize().scale(Math.min(1.5, 0.4 + speed));
+			mob.push(push.x, 0.25, push.z);
+			mob.hurtMarked = true;
+			if (!tank) {
+				this.hurtServer(serverWorld, this.damageSources().flyIntoWall(), damage);
+			}
+		}
 	}
 
 	/** A deliberately lightweight, wake-trail-only water-surface scan (center point only, no multi-corner touching check) - see tudursvehiclemod$updateSubmersibleImmobilization()'s own doc for the more careful, separate scan that method uses for actual damage purposes, which this intentionally does NOT share/refactor into. Scans upward from this vehicle's own hitbox bottom (center X/Z) for the topmost contiguous still water source layer, same "stop at the first break in contiguity" logic as that other scan. Empty if not touching any water source at this vehicle's own center point at all. */

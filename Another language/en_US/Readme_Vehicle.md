@@ -226,6 +226,14 @@ Under each field's own heading, an actual example entry is given as
   - `car`: takes damage itself from colliding with a mob. Has low
     block-destruction power
   - `unknown` (default): neither behavior occurs
+  - **For a Car (`VehicleType: Car`)**: whatever the type, driving head-on
+    into a mob or a player on foot at about 14 km/h or more damages it by
+    the relative speed (about 22 for a halftrack at full speed) and knocks
+    it along the way the car is going - and the car takes the same damage.
+    Only with `tank` does the car take none (only the one it hits is
+    damaged). Found by the vehicle's model shape; the same one is hit at
+    most once every 0.5 seconds (10 ticks). With a player driving, the hit
+    counts as that player's attack
 - **Example**:
   ```json
   "weight_type": "tank"

@@ -251,6 +251,7 @@ public final class HudVariables {
 			vars.put("stalling", 0.0);
 		}
 		vars.put("gear_deployed", vehicle.tudursvehiclemod$supportsLandingGearDisplay() && vehicle.isGearDeployed() ? 1.0 : 0.0);
+		vars.put("standby", vehicle instanceof com.example.tudursvehiclemod.entity.AircraftEntity aircraft && aircraft.tudursvehiclemod$isStandby() ? 1.0 : 0.0);
 		// speed: this vehicle's own tracked "airspeed" (getCruiseSpeed()), NOT raw getVelocity().length() - but only for its pilot. getCruiseSpeed() is advanced on the client only while THIS client is flying it, so in any other seat it stayed frozen at the value from the moment of changing seats. Anyone else gets the actual forward speed instead (the same forward-component measure the cruise speed is seeded from when a pilot takes the controls).
 		double speed;
 		if (vehicle.getControllingPassenger() == player) {

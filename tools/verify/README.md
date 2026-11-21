@@ -96,6 +96,8 @@ LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" \
 | `/tvmtest takeoff <プレイヤー名> "<艦ID>" "<機体ID>" [sail]` | (-3200, 40)の水路に艦を浮かべ、60tick後に最初の滑走路の後端へ機体を置いてプレイヤーを乗せる。`-Dtvmtest.speedsync=1`のクライアントが200tick全速前進し、速度・甲板からの高さ・体力を5tickごとにログに出す。`sail`では艦が0.2ブロック/tickで前進しつつ±0.3ブロック上下する。プレイヤーがいなければ駐機のみ。`/tvmtest takeoffx <x>`で置く位置を左右にずらせる |
 | `/tvmtest farveh <プレイヤー名>` | プレイヤーを(-3020, 0)に東向きで立たせ、200ブロック先(-2820)に旋回する航空機・空中に止まるヘリ・地上のハーフトラックを、20ブロック先にハーフトラックを置き、30tickごとに(-2840, -40)の上空からミサイルのモデルの弾を+Z方向へ撃つ(遠方のチャンクは強制ロード)。サーバーの描画距離を4程度、`farVehicleSyncEnabled`をオンにして使う。`-Dtvmtest.farveh=1`のクライアントは遠方の機体の描画をオン・霧オフ・描画距離2にし、40tickごとに遠方の機体を記録、400・600tickでスクリーンショット、700tickで終了(`-Dtvmtest.farveh.off=1`で描画オフの比較) |
 | `/tvmtest speeddrive <プレイヤー名>` | そのプレイヤーを(-3000, 0)のハーフトラックの運転席に乗せる。`-Dtvmtest.speedsync=1`のクライアントが200tick全速前進し、クライアント側での最高速度と倍率をログに出す |
+| `/tvmtest carmob <プレイヤー名> "<車両ID>"` | そのプレイヤーを(-3000, 0)の新しい車両に乗せ、12・22・32ブロック先にAIなしのゾンビを置く(`-Dtvmtest.speedsync=1`のクライアントが全速前進)。260tick後に車両の体力とゾンビの体力を`CARMOB end`としてログに出す。`weight_type`が`tank`の車両は体力が減らないこと。航空機を指定し、クライアントを`-Dtvmtest.standby=1`で起動すると、20tick目に待機モードへ切り替えてから全速を入れ、50tickごとに`STANDBY standby= throttle= moved=`を出す(スロットル0.3以下・ほぼ動かないこと)。`-Dtvmtest.runs=<回数>`でクライアントが終了するまでの走行回数を変えられる |
+| `/tvmtest avoid <on\|off> "<障害物の機体ID>" "<航空機ID>" <高さ>` | (-2600, 0)に障害物の機体を置き、その中を通るCASの経路で航空機を飛ばす(`autopilotCollisionAvoidance`をon/offに切り替える)。通過後に`AVOID … contactTicks minCentreDistance passHeight health`をログに出す。onでは接触0になること |
 
 ## 負荷の計測
 

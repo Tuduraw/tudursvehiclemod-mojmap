@@ -147,6 +147,12 @@ public class ServerConfigMenuScreen extends Screen {
 				}));
 
 		entries.add(new ConfigEntry(
+				Component.translatable("gui.tudursvehiclemod.server_config.autopilot_collision_avoidance",
+						Component.translatable(config.autopilotCollisionAvoidance ? "options.on" : "options.off")),
+				"gui.tudursvehiclemod.server_config.autopilot_collision_avoidance.tooltip",
+				() -> config.autopilotCollisionAvoidance = !config.autopilotCollisionAvoidance));
+
+		entries.add(new ConfigEntry(
 				Component.translatable("gui.tudursvehiclemod.server_config.far_vehicle_sync",
 						Component.translatable(config.farVehicleSyncEnabled ? "options.on" : "options.off")),
 				"gui.tudursvehiclemod.server_config.far_vehicle_sync.tooltip",

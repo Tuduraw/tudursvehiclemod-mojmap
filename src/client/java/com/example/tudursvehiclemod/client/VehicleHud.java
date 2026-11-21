@@ -145,6 +145,13 @@ public class VehicleHud {
 			context.drawString(client.font, manualMode, screenWidth / 2 - manualModeWidth / 2,
 					y + BAR_HEIGHT + 16, 0xFFFF5555, true);
 		}
+
+		if (vehicle instanceof com.example.tudursvehiclemod.entity.AircraftEntity aircraft && aircraft.tudursvehiclemod$isStandby()) {
+			Component standby = Component.translatable("hud.tudursvehiclemod.standby");
+			int standbyWidth = client.font.width(standby);
+			context.drawString(client.font, standby, screenWidth / 2 - standbyWidth / 2,
+					y + BAR_HEIGHT + 28, 0xFF55FFFF, true);
+		}
 	}
 
 	/** True if scriptName (or anything it Calls, recursively) already references mortar_distance/has_mortar_distance - HudScript's own referencesMortarDistance() already covers the whole file's own raw text (including inside If bodies), so this only needs to additionally walk Call chains into OTHER script files. Cycle-safe via visited. */

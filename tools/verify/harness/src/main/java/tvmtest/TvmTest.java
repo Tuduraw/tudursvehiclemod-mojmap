@@ -99,6 +99,7 @@ public class TvmTest implements ModInitializer {
 		ServerTickEvents.END_SERVER_TICK.register(srv -> DestroyRideTest.tick());
 		ServerTickEvents.END_SERVER_TICK.register(srv -> TakeoffTest.tick());
 		ServerTickEvents.END_SERVER_TICK.register(srv -> FarVehicleTest.tick());
+		ServerTickEvents.END_SERVER_TICK.register(srv -> AvoidTest.tick());
 		CommandRegistrationCallback.EVENT.register((dispatcher, access, env) -> dispatcher.register(
 				CommandManager.literal("tvmtest").requires(src -> true)
 						.then(CommandManager.literal("run").then(CommandManager.argument("name", StringArgumentType.word())
@@ -155,6 +156,12 @@ public class TvmTest implements ModInitializer {
 								.executes(ctx -> { System.setProperty("tvmtest.takeoffx", Double.toString(com.mojang.brigadier.arguments.DoubleArgumentType.getDouble(ctx, "x"))); return 1; })))
 						.then(CommandManager.literal("farveh").then(CommandManager.argument("player", StringArgumentType.word())
 								.executes(ctx -> { FarVehicleTest.start(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "player")); return 1; })))
+						.then(CommandManager.literal("avoid").then(CommandManager.argument("mode", StringArgumentType.word()).then(CommandManager.argument("obstacle", StringArgumentType.string()).then(CommandManager.argument("aircraft", StringArgumentType.string())
+								.then(CommandManager.argument("height", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 200))
+								.executes(ctx -> { AvoidTest.start(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "mode").equals("on"), StringArgumentType.getString(ctx, "obstacle"),
+										StringArgumentType.getString(ctx, "aircraft"), com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "height")); return 1; }))))))
+						.then(CommandManager.literal("carmob").then(CommandManager.argument("player", StringArgumentType.word()).then(CommandManager.argument("vehicle", StringArgumentType.string())
+								.executes(ctx -> { SpeedTest.carMob(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "player"), StringArgumentType.getString(ctx, "vehicle")); return 1; }))))
 						.then(CommandManager.literal("dmgscale").then(CommandManager.argument("name", StringArgumentType.word())
 								.executes(ctx -> { String n = StringArgumentType.getString(ctx, "name");
 									if (n.equals("setup")) DmgScaleTest.setup(ctx.getSource().getWorld()); else DmgScaleTest.run(ctx.getSource().getWorld(), n); return 1; })))

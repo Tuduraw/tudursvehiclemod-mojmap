@@ -231,6 +231,7 @@ it stood, and packing away a destroyed wreck gives no item back.
 | V | Switch a VTOL between helicopter and aircraft mode |
 | H | Open/close hatches and canopies |
 | G | Manually retract/extend landing gear |
+| Alt+G | Toggle an aircraft's standby mode (the physical key is shared with G; only on the ground, a deck, or the water for a seaplane) |
 | N | Fold/extend the main wings (a variable-sweep aircraft can also switch mid-flight) |
 | C | Cycle between configured camera positions (`CameraPosition`) |
 | PageUp/PageDown | Third-person zoom (aircraft) |
@@ -285,6 +286,10 @@ looping** possible.
   stages as speed drops (6x ordinary falling gravity once speed is fully
   lost)
 - **Landing gear deployed**: top speed drops to 70% (representing drag)
+- **Standby mode** (Alt+G, only on the ground, a deck or the water): the
+  aircraft stays where it is while the throttle can go up to 30% (an
+  engine run-up, or waiting to take off). Alt+G again leaves it; leaving
+  the ground leaves it too. The HUD shows "STANDBY"
 - **Deceleration (in flight, when throttle is reduced)**: kicks in 1.5x
   faster than acceleration does (ground braking is configured separately,
   as above)
@@ -699,8 +704,16 @@ size, so contact with a large vehicle was hardly ever found before.
   - Between two vehicles, damage is worked out from their relative speed.
   - A contact on the lowest 20% of the aircraft's height (the wheels, the
     belly) is taken as landing on or resting on a deck, not a collision.
+  - A Car driving into a mob or a player on foot at about 14 km/h or more
+    hurts both. A car with `weight_type` `tank` hurts only the one it hits
+    (see `weight_type` in [Readme_Vehicle.md](Readme_Vehicle.md)).
+  - Aircraft flying themselves (CAS strikes, carrier aircraft, formation
+    wingmen) steer clear of the other vehicles ahead of them, each taken as
+    a box (server setting `autopilotCollisionAvoidance`, on by default; see
+    [Readme_cfg.md](Readme_cfg.md)).
 - Nothing is pushed apart: vehicles and living entities still pass
-  through each other as before. Moving parts (rotors, gear and the like)
+  through each other as before (a living entity a Car runs into is
+  knocked away along with the damage). Moving parts (rotors, gear and the like)
   are left out, and turrets are taken at their rest position.
 - `/tvm debug contacts` shows the contacts found as particles (red:
   vehicle against vehicle, yellow: vehicle against a living entity). See
@@ -1234,6 +1247,12 @@ settings, and so on).
 
 ## Known incompatibilities
 
+- **Distant Horizons (not investigated)**: with Distant Horizons installed,
+  the far vehicle display described in "Using with LOD mods"
+  (`renderFarVehicles` / `farVehicleSyncEnabled`) has been reported not to
+  work. A conflict with Distant Horizons' own rendering is suspected, but
+  the cause hasn't been pinned down. The feature itself is kept (for other
+  setups, and for use on multiplayer servers)
 - **Lithium**: Lithium's collision optimization
   (`mixin.entity.collisions.movement`) gathers the collision shapes for
   entity movement its own way, so runway floors (carriers and the like -

@@ -90,6 +90,7 @@ public class TvmTestClient implements ClientModInitializer {
 	// -Dtvmtest.speedsync=1: logs the vehicle speed multiplier this client uses (entity.VehicleSpeedScaling) every 100 ticks in a world, for 600 ticks, then quits - change it on the server meanwhile (/tvmtest setspeed <x>) to see it follow.
 	int speedSyncTicks;
 	int driveTicks, driveRuns, driveDoneVehicle = -1;
+	net.minecraft.util.math.Vec3d driveStartPos;
 	double drivePeak, driveLastX, driveLastZ, driveStartX, driveStartZ;
 
 	void speedSyncTick(MinecraftClient client) {
@@ -112,6 +113,15 @@ public class TvmTestClient implements ClientModInitializer {
 		// Once seated in a vehicle (/tvmtest speeddrive <name> on the server): full forward for 200 ticks, peak speed as this client moves it.
 		if (client.player.getVehicle() instanceof com.example.tudursvehiclemod.entity.AbstractVehicleEntity vehicle && vehicle.getId() != driveDoneVehicle) {
 			client.options.forwardKey.setPressed(true);
+			// -Dtvmtest.standby: an aircraft into standby mode first (Alt+G's payload), then full throttle.
+			if (driveTicks == 20 && System.getProperty("tvmtest.standby") != null && vehicle instanceof com.example.tudursvehiclemod.entity.AircraftEntity) {
+				net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new com.example.tudursvehiclemod.network.StandbyTogglePayload());
+				driveStartPos = new net.minecraft.util.math.Vec3d(vehicle.getX(), vehicle.getY(), vehicle.getZ());
+			}
+			if (driveTicks % 50 == 0 && vehicle instanceof com.example.tudursvehiclemod.entity.AircraftEntity aircraft) {
+				TvmTest.LOG.info("[tvmtest] STANDBY t={} standby={} throttle={} moved={}", driveTicks, aircraft.tudursvehiclemod$isStandby(),
+						Math.round(aircraft.getThrottle() * 100) / 100.0, driveStartPos == null ? -1 : Math.round(new net.minecraft.util.math.Vec3d(aircraft.getX(), aircraft.getY(), aircraft.getZ()).distanceTo(driveStartPos) * 100) / 100.0);
+			}
 			if (driveTicks > 0) {
 				double dx = vehicle.getX() - driveLastX, dz = vehicle.getZ() - driveLastZ;
 				double step = Math.sqrt(dx * dx + dz * dz);
@@ -138,7 +148,7 @@ public class TvmTestClient implements ClientModInitializer {
 				driveDoneVehicle = vehicle.getId();
 			}
 		}
-		if (speedSyncTicks >= 6000 || driveRuns >= 2) {
+		if (speedSyncTicks >= 6000 || driveRuns >= Integer.getInteger("tvmtest.runs", 2)) {
 			client.scheduleStop();
 		}
 	}

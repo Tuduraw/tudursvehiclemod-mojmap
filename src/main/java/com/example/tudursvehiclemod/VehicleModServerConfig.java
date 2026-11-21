@@ -83,6 +83,9 @@ public final class VehicleModServerConfig {
 	/** Fire Support Center: the largest relative coordinate (blocks, each axis) the center's screen accepts for a target. Defaults to 4096. */
 	public int fireSupportMaxDistance = 4096;
 
+	/** Aircraft flying themselves (CAS strikes, carrier aircraft, drones, formations) steer clear of the other vehicles around them - wingmen, their mothership - taking each as a box the size of its model (entity.CollisionAvoidance). On by default. */
+	public boolean autopilotCollisionAvoidance = true;
+
 	/** Tells players about vehicles beyond the range the game sends entities in, so that clients with an LOD mod (and renderFarVehicles on) can draw them over its distant terrain (entity.FarVehicleSync). Off by default: it lets players see where far-away vehicles are. */
 	public boolean farVehicleSyncEnabled = false;
 

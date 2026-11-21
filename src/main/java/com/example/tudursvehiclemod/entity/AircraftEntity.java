@@ -42,6 +42,63 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 	/** This backs casWaypointSpeedFraction (see that field's own doc), which used to be a plain (server-only) field - blade-spin rendering and engine sound are BOTH computed client-side, so a server-only value always reads as its own untouched default (0) on any observing client, including the piloting player's own, regardless of what the server-side value actually is. Same root cause and fix pattern as GEAR_DEPLOYED's and CARRIER_WEAPON_BAY_OVERRIDE_ACTIVE/_VALUE's own earlier fixes for this exact class of bug. */
 	private static final EntityDataAccessor<Float> CAS_WAYPOINT_SPEED_FRACTION =
 			SynchedEntityData.defineId(AircraftEntity.class, EntityDataSerializers.FLOAT);
+	/** Standby mode (tudursvehiclemod$toggleStandby()): synced, as the pilot's own client moves the aircraft too. */
+	private static final EntityDataAccessor<Boolean> STANDBY =
+			SynchedEntityData.defineId(AircraftEntity.class, EntityDataSerializers.BOOLEAN);
+
+	/** The highest throttle in standby mode. */
+	public static final float STANDBY_MAX_THROTTLE = 0.3f;
+
+	/** Flying itself (a CAS strike, a carrier's aircraft, a drone or formation member), it keeps out of the other vehicles around it (CollisionAvoidance) - turned away just before it moves, whichever routine is flying it. */
+	@Override
+	public void move(net.minecraft.world.entity.MoverType type, Vec3 movement) {
+		if (type == net.minecraft.world.entity.MoverType.SELF && !this.level().isClientSide() && this.tudursvehiclemod$isAvoidingCollisions()) {
+			Vec3 steer = CollisionAvoidance.steer(this, movement, this::tudursvehiclemod$shouldAvoid);
+			if (steer.lengthSqr() > 0) {
+				movement = movement.add(steer);
+				this.setDeltaMovement(movement);
+			}
+		}
+		super.move(type, movement);
+	}
+
+	/** Whether this aircraft is flying itself, in the air - and so keeps out of other vehicles (CollisionAvoidance). Not while a player flies it. */
+	public boolean tudursvehiclemod$isAvoidingCollisions() {
+		if (!com.example.tudursvehiclemod.VehicleModServerConfig.get().autopilotCollisionAvoidance
+				|| this.getControllingPassenger() instanceof Player || this.tudursvehiclemod$isCarrierPlayerControlled() || this.onGround() || this.tudursvehiclemod$isDestroyed()) {
+			return false;
+		}
+		return this.tudursvehiclemod$isUsingRampedAutopilotThrottle() || this.tudursvehiclemod$isCasStrikeAircraft()
+				|| this.carrierMothershipUuid != null || this.carrierLaunchMothershipUuid != null;
+	}
+
+	/** Which vehicles this aircraft keeps out of: all of them, but not its own mothership while it is leaving it (the launch route) or coming back to land on it. */
+	public boolean tudursvehiclemod$shouldAvoid(AbstractVehicleEntity other) {
+		java.util.UUID id = other.getUUID();
+		boolean mothership = id.equals(this.carrierMothershipUuid) || id.equals(this.carrierLaunchMothershipUuid);
+		return !(mothership && (this.carrierReturning || this.tudursvehiclemod$isLaunchingFromCarrier()));
+	}
+
+	/** Whether this aircraft is in standby mode: held where it stands on the ground (or a deck, or the water for a seaplane), its throttle up to STANDBY_MAX_THROTTLE - an engine run-up, or waiting for the go ahead to take off. */
+	public boolean tudursvehiclemod$isStandby() {
+		return this.entityData.get(STANDBY);
+	}
+
+	/** Alt+G (by default): into standby mode, only while on the ground (or a deck, or the water for a seaplane) - throttle down to STANDBY_MAX_THROTTLE if above it - and out of it again. Leaves it by itself if it is no longer on the ground. Returns whether it is in standby mode now. */
+	public boolean tudursvehiclemod$toggleStandby() {
+		if (this.tudursvehiclemod$isStandby()) {
+			this.entityData.set(STANDBY, false);
+			return false;
+		}
+		if (!this.surfacedState || this.tudursvehiclemod$isDestroyed()) {
+			return false;
+		}
+		this.entityData.set(STANDBY, true);
+		if (this.getThrottle() > STANDBY_MAX_THROTTLE) {
+			this.setThrottleDirect(STANDBY_MAX_THROTTLE);
+		}
+		return true;
+	}
 
 	/** Recomputes cruiseSpeed from this entity's own actual velocity whenever CARRIER_PLAYER_CONTROLLED is seen as true - onTrackedDataSet() fires for the INITIAL sync of a tracked value too (not just later changes), so this covers both a normal switch AND switching into an aircraft the client had never tracked before (was out of render distance until the moment of mounting) in one path, correctly on whichever side is actually running this. */
 	@Override
@@ -213,6 +270,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		builder.define(SYNCED_ROLL, 0.0f);
 		builder.define(CARRIER_PLAYER_CONTROLLED, false);
 		builder.define(CAS_WAYPOINT_SPEED_FRACTION, 0.0f);
+		builder.define(STANDBY, false);
 	}
 
 	/** Called once per tick by the stall check: true keeps the aircraft out of a stall this tick. None by default; VtolEntity keeps one for a short while after converting to aircraft mode (see its own override). */
@@ -587,8 +645,14 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		this.wasPiloted = player != null;
 
 		float throttle;
+		boolean standby = this.tudursvehiclemod$isStandby();
 		if (player != null) {
-			throttle = updateThrottle(player, 0.015f * def.throttleUpDown().orElse(1.0f), def.reverseThrottle(), 1.0f);
+			// In standby mode, the throttle goes no higher than STANDBY_MAX_THROTTLE.
+			throttle = updateThrottle(player, 0.015f * def.throttleUpDown().orElse(1.0f), def.reverseThrottle(), standby ? STANDBY_MAX_THROTTLE : 1.0f);
+			if (standby && throttle > STANDBY_MAX_THROTTLE) {
+				throttle = STANDBY_MAX_THROTTLE;
+				setThrottleDirect(throttle);
+			}
 			// Applies specifically to this
 			// aircraft's own ground-taxi turning (see
 			// tudursvehiclemod$easeTowardsGroundAttitude()'s own doc,
@@ -941,6 +1005,17 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 			// Deliberately does NOT set hasLifted=true here.
 			this.tudursvehiclemod$resetSurfaceFloatLock();
 			target = new Vec3(target.x, LIFTOFF_VELOCITY, target.z);
+		}
+
+		if (standby) {
+			if (surfaced && !this.tudursvehiclemod$isDestroyed()) {
+				// Held where it stands, whatever the throttle; only settling onto the ground (or water) still moves it.
+				target = new Vec3(0, Math.min(0, target.y), 0);
+				this.cruiseSpeed = 0f;
+			} else if (!this.level().isClientSide()) {
+				// No longer on the ground (pushed off a deck, a catapult launch, destroyed): out of standby.
+				this.entityData.set(STANDBY, false);
+			}
 		}
 
 		double preMoveSpeed = target.length();

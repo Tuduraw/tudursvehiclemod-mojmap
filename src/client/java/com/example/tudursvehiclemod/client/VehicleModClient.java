@@ -721,7 +721,13 @@ public class VehicleModClient implements ClientModInitializer {
 			}
 
 			if (gearToggleKey.consumeClick()) {
-				if (client.player != null
+				if (freeLookKey.isDown()) {
+					// Alt + the gear key: an aircraft's standby mode (AircraftEntity.tudursvehiclemod$toggleStandby()) - decided by the server (which may refuse: not on the ground), and synced back.
+					if (client.player != null
+							&& tudursvehiclemod$getClientEffectiveVehicle(client.player) instanceof com.example.tudursvehiclemod.entity.AircraftEntity) {
+						ClientPlayNetworking.send(new com.example.tudursvehiclemod.network.StandbyTogglePayload());
+					}
+				} else if (client.player != null
 						&& tudursvehiclemod$getClientEffectiveVehicle(client.player) instanceof com.example.tudursvehiclemod.entity.AbstractVehicleEntity vehicle) {
 					// CRITICAL: also toggle directly on the client's own local copy, not just send it to the server.
 					vehicle.toggleLandingGear();

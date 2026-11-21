@@ -217,6 +217,7 @@ Every coordinate is relative to the screen's own center
 | `manual_mode` | Whether currently in manual mode (0/1; only meaningful for Aircraft/VTOL) |
 | `stalling` | Whether currently stalling (0/1; only meaningful for Aircraft/VTOL) |
 | `gear_deployed` | Whether the landing gear is deployed (0/1) |
+| `standby` | Whether the aircraft is in standby mode (0/1) |
 
 ### Weapons (about the currently-selected weapon)
 | Variable | Meaning |

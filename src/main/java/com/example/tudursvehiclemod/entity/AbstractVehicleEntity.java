@@ -4952,7 +4952,8 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 
 	/** Car takes damage colliding with a living entity (crash); Tank doesn't; Unknown behaves like neither (ported from MC Heli's WeightType directive - undefined for anything but Tank/Car). */
 	private void tudursvehiclemod$handleWeightTypeMobCollision(VehicleDefinition def) {
-		if (def.weightType() != com.example.tudursvehiclemod.asset.WeightType.CAR) {
+		// A Car has its own running-into-mobs handling, whatever its weight_type (CarEntity.tudursvehiclemod$checkMobCollision()).
+		if (def.weightType() != com.example.tudursvehiclemod.asset.WeightType.CAR || this instanceof CarEntity) {
 			return;
 		}
 		double speed = this.getDeltaMovement().horizontalDistance();

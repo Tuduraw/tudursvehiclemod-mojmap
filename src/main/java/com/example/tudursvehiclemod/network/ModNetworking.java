@@ -57,6 +57,7 @@ public class ModNetworking {
 		PayloadTypeRegistry.playC2S().register(AircraftOrientationInputPayload.ID, AircraftOrientationInputPayload.CODEC);
 		PayloadTypeRegistry.playC2S().register(HatchTogglePayload.ID, HatchTogglePayload.CODEC);
 		PayloadTypeRegistry.playC2S().register(GearTogglePayload.ID, GearTogglePayload.CODEC);
+		PayloadTypeRegistry.playC2S().register(StandbyTogglePayload.ID, StandbyTogglePayload.CODEC);
 		PayloadTypeRegistry.playC2S().register(
 				com.example.tudursvehiclemod.network.DroneCenterConfigUpdatePayload.ID,
 				com.example.tudursvehiclemod.network.DroneCenterConfigUpdatePayload.CODEC);
@@ -196,6 +197,11 @@ public class ModNetworking {
 		tudursvehiclemod$onEffectiveVehicle(WingFoldTogglePayload.ID, AbstractVehicleEntity::tryToggleWingFold);
 
 		tudursvehiclemod$onEffectiveVehicle(GearTogglePayload.ID, AbstractVehicleEntity::toggleLandingGear);
+		tudursvehiclemod$onEffectiveVehicle(StandbyTogglePayload.ID, vehicle -> {
+			if (vehicle instanceof com.example.tudursvehiclemod.entity.AircraftEntity aircraft) {
+				aircraft.tudursvehiclemod$toggleStandby();
+			}
+		});
 
 		ServerPlayNetworking.registerGlobalReceiver(
 				com.example.tudursvehiclemod.network.DroneCenterConfigUpdatePayload.ID, (payload, context) ->

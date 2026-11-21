@@ -78,7 +78,46 @@ final class SpeedTest {
 		TvmTest.LOG.info("[tvmtest] SPEEDDRIVE mounted={}", player.startRiding(v, true, true));
 	}
 
+	static java.util.List<net.minecraft.entity.mob.ZombieEntity> zombies = new java.util.ArrayList<>();
+	static AbstractVehicleEntity mobCar;
+	static int mobTicks = -1;
+
+	/** /tvmtest carmob <player> <vehicle id>: seats the (real) player in a fresh vehicle at (-3000, 0) facing +Z, with three zombies (no AI) 12, 22 and 32 blocks ahead; 260 ticks later logs the vehicle's and the zombies' health (the client probe -Dtvmtest.speedsync drives it forward). */
+	static void carMob(TvmTest t, ServerWorld world, String playerName, String vehicleId) {
+		net.minecraft.server.network.ServerPlayerEntity player = world.getServer().getPlayerManager().getPlayer(playerName);
+		if (player == null) {
+			return;
+		}
+		if (player.getVehicle() != null) {
+			net.minecraft.entity.Entity old = player.getVehicle();
+			player.stopRiding();
+			old.discard();
+		}
+		for (var z : zombies) z.discard();
+		zombies.clear();
+		player.teleport(world, CAR_X + 0.5, TvmTest.GROUND_Y, 0.5, java.util.Set.of(), 0f, 0f, true);
+		mobCar = t.spawn(world, Identifier.of(vehicleId), new Vec3d(CAR_X + 0.5, TvmTest.GROUND_Y, 0.5));
+		TvmTest.fillFuel(mobCar);
+		player.startRiding(mobCar, true, true);
+		for (int dz : new int[] {12, 22, 32}) {
+			var zombie = net.minecraft.entity.EntityType.ZOMBIE.create(world, net.minecraft.entity.SpawnReason.COMMAND);
+			zombie.refreshPositionAndAngles(CAR_X + 0.5, TvmTest.GROUND_Y, 0.5 + dz, 180f, 0f);
+			zombie.setAiDisabled(true);
+			zombie.setPersistent();
+			world.spawnEntity(zombie);
+			zombies.add(zombie);
+		}
+		mobTicks = 0;
+		TvmTest.LOG.info("[tvmtest] CARMOB start {} health={}", vehicleId, mobCar.getHealth());
+	}
+
 	static void tick() {
+		if (mobTicks >= 0 && ++mobTicks >= 260) {
+			mobTicks = -1;
+			StringBuilder sb = new StringBuilder();
+			for (var z : zombies) sb.append(z.isAlive() ? String.valueOf(Math.round(z.getHealth() * 10) / 10.0) : "dead").append(' ');
+			TvmTest.LOG.info("[tvmtest] CARMOB end vehicleHealth={} vehicleZ={} zombies=[{}]", mobCar.getHealth(), Math.round(mobCar.getZ()), sb.toString().trim());
+		}
 		if (ticks < 0) {
 			return;
 		}
