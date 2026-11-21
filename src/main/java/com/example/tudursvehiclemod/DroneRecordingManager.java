@@ -81,7 +81,7 @@ public final class DroneRecordingManager {
 		int x = Mth.floor(vehicle.getX());
 		int y = Mth.floor(vehicle.getY());
 		int z = Mth.floor(vehicle.getZ());
-		float maxSpeed = vehicle.getDefinition().maxSpeed();
+		float maxSpeed = vehicle.tudursvehiclemod$getScaledMaxSpeed();
 		float speedFraction = maxSpeed > 1.0e-4f
 				? Mth.clamp((float) vehicle.getDeltaMovement().length() / maxSpeed, 0.05f, 1.0f)
 				: 0.05f;

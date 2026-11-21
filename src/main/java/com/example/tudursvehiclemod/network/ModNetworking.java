@@ -32,6 +32,12 @@ public class ModNetworking {
 				ServerPlayNetworking.send(handler.player, DefinitionFingerprintPayload.current());
 			}
 		});
+		// The server settings a client moves vehicles with (VehicleSpeedScaling): on joining, and to everyone whenever they change.
+		PayloadTypeRegistry.playS2C().register(ServerSettingsSyncPayload.ID, ServerSettingsSyncPayload.CODEC);
+		net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
+				com.example.tudursvehiclemod.entity.VehicleSpeedScaling.sendTo(handler.player));
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(com.example.tudursvehiclemod.entity.VehicleSpeedScaling::onEndServerTick);
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(com.example.tudursvehiclemod.entity.VehicleSpeedScaling::onServerStopped);
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.END_DATA_PACK_RELOAD.register((server, resourceManager, success) -> {
 			DefinitionFingerprintPayload payload = DefinitionFingerprintPayload.current();
 			for (var player : server.getPlayerList().getPlayers()) {

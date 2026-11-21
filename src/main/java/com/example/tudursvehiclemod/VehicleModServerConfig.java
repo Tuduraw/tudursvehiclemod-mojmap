@@ -83,6 +83,12 @@ public final class VehicleModServerConfig {
 	/** Fire Support Center: the largest relative coordinate (blocks, each axis) the center's screen accepts for a target. Defaults to 4096. */
 	public int fireSupportMaxDistance = 4096;
 
+	/** Multiplies every vehicle's top speed (entity.VehicleSpeedScaling): max_speed, and the other speeds a vehicle gives in absolute terms (SweepWingSpeed, dive_max_speed, a catapult launch's speed boost). Acceleration, turning and the rest of a vehicle's handling stay as defined. 1.0 (the default) is unchanged; values under 0.05 are used as 0.05. Applies immediately, and is sent to players' clients (which move vehicles too). */
+	public double vehicleSpeedMultiplier = 1.0;
+
+	/** Vehicle speed multipliers for particular entity types, in place of vehicleSpeedMultiplier for those types (entity.VehicleSpeedScaling). Keyed by entity type id - "tudursvehiclemod:aircraft", or just "aircraft" for this mod's own types (helicopter, car, ship, submarine, aircraft, vtol); an addon's vehicle types by their own ids. Empty by default: every type uses vehicleSpeedMultiplier. */
+	public java.util.Map<String, Double> vehicleSpeedMultiplierByType = new java.util.LinkedHashMap<>();
+
 	/** Multiplies the damage this mod's weapons do when a projectile hits an entity or a vehicle (entity.DamageScaling). 1.0 (the default) is the damage each weapon file sets; 0 means no damage - a hit only knocks a living target back. Crash, collision and drowning damage isn't affected. Applies immediately. */
 	public double weaponDamageMultiplier = 1.0;
 
@@ -108,29 +114,20 @@ public final class VehicleModServerConfig {
 	}
 
 	private static VehicleModServerConfig load() {
-		if (Files.exists(CONFIG_PATH)) {
-			try (Reader reader = Files.newBufferedReader(CONFIG_PATH, StandardCharsets.UTF_8)) {
-				VehicleModServerConfig loaded = GSON.fromJson(reader, VehicleModServerConfig.class);
-				if (loaded != null) {
-					return loaded;
-				}
-			} catch (IOException | RuntimeException ignored) {
-				// Malformed or unreadable - falls through to defaults below.
-			}
+		// A file from an older version gets the settings added since then, with their defaults (ConfigFiles.load()).
+		VehicleModServerConfig loaded = com.example.tudursvehiclemod.ConfigFiles.load(CONFIG_PATH, GSON, VehicleModServerConfig.class);
+		if (loaded != null) {
+			return loaded;
 		}
+		// Missing, malformed or unreadable - defaults.
 		VehicleModServerConfig defaults = new VehicleModServerConfig();
 		defaults.save();
 		return defaults;
 	}
 
 	public void save() {
-		try {
-			Files.createDirectories(CONFIG_PATH.getParent());
-			try (Writer writer = Files.newBufferedWriter(CONFIG_PATH, StandardCharsets.UTF_8)) {
-				GSON.toJson(this, writer);
-			}
-		} catch (IOException ignored) {
-			// Not being able to write the config is not worth crashing over.
-		}
+		// Keeps settings in the file this version doesn't know (ConfigFiles.save()).
+		com.example.tudursvehiclemod.ConfigFiles.save(CONFIG_PATH, GSON, this);
 	}
+
 }

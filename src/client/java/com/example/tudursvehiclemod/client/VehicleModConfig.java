@@ -139,29 +139,20 @@ public final class VehicleModConfig {
 	public int translucencyDitherMaxTextureSize = 2048;
 
 	public static VehicleModConfig load() {
-		if (Files.exists(CONFIG_PATH)) {
-			try (Reader reader = Files.newBufferedReader(CONFIG_PATH, StandardCharsets.UTF_8)) {
-				VehicleModConfig loaded = GSON.fromJson(reader, VehicleModConfig.class);
-				if (loaded != null) {
-					return loaded;
-				}
-			} catch (IOException | RuntimeException ignored) {
-				// Malformed or unreadable.
-			}
+		// A file from an older version gets the settings added since then, with their defaults (ConfigFiles.load()).
+		VehicleModConfig loaded = com.example.tudursvehiclemod.ConfigFiles.load(CONFIG_PATH, GSON, VehicleModConfig.class);
+		if (loaded != null) {
+			return loaded;
 		}
+		// Missing, malformed or unreadable - defaults.
 		VehicleModConfig defaults = new VehicleModConfig();
 		defaults.save();
 		return defaults;
 	}
 
 	public void save() {
-		try {
-			Files.createDirectories(CONFIG_PATH.getParent());
-			try (Writer writer = Files.newBufferedWriter(CONFIG_PATH, StandardCharsets.UTF_8)) {
-				GSON.toJson(this, writer);
-			}
-		} catch (IOException ignored) {
-			// Not being able to write the config is not worth crashing over.
-		}
+		// Keeps settings in the file this version doesn't know (ConfigFiles.save()).
+		com.example.tudursvehiclemod.ConfigFiles.save(CONFIG_PATH, GSON, this);
 	}
+
 }

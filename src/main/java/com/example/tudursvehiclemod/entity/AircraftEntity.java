@@ -712,11 +712,11 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 			this.stallYawLocked = false;
 		} else if (surfaced) {
 			// Eases yaw-preserving pitch towards this vehicle's own configured "on ground" attitude (def.onGroundPitch().
-			if (this.cruiseSpeed <= def.maxSpeed() * GROUND_ATTITUDE_SPEED_FRACTION) {
+			if (this.cruiseSpeed <= this.tudursvehiclemod$getScaledMaxSpeed() * GROUND_ATTITUDE_SPEED_FRACTION) {
 				tudursvehiclemod$easeTowardsGroundAttitude(def, player);
 				this.levelFlightYawLocked = false;
 				this.groundLevelYawLocked = false;
-			} else if (this.cruiseSpeed >= def.maxSpeed() * GROUND_LEVEL_SPEED_FRACTION) {
+			} else if (this.cruiseSpeed >= this.tudursvehiclemod$getScaledMaxSpeed() * GROUND_LEVEL_SPEED_FRACTION) {
 				tudursvehiclemod$easeTowardsLevelOnGround(player);
 			} else {
 				this.levelFlightYawLocked = false;
@@ -1153,7 +1153,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 				return;
 			}
 		}
-		float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, this.tudursvehiclemod$getDroneSpeedFraction(), def.maxSpeed());
+		float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, this.tudursvehiclemod$getDroneSpeedFraction(), this.tudursvehiclemod$getScaledMaxSpeed());
 		// Uses this vehicle's own ACTUAL yaw turn rate (getYawFollowRateDegrees() - what a manned pilot's own input is actually clamped to in updateOrientation(), equal to def.turnSpeed() * YAW_RATE_MULTIPLIER) rather than the raw, un-multiplied def.turnSpeed() - the drone was previously only using 1/3 of what a manned pilot could actually achieve with the same vehicle.
 		float effectiveTurnRate = this.getYawFollowRateDegrees();
 		// Natural circular-motion radius for this vehicle's own turn rate at this cruise speed, rather than an arbitrary uniform value - matches real circular motion (angularVelocity = speed / radius).
@@ -1173,8 +1173,8 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		Vec3 horizontalTarget = tangential.scale(cruiseSpeedTarget).add(radialCorrection);
 		// The radial correction term above (proportional to how far off the natural orbit radius the vehicle currently is - largest right after takeoff, starting near radius 0) was never capped once combined with the tangential component, and could push the resulting target magnitude far past the intended cruise speed - verified via simulation to reach over 150% of maxSpeed for a less-nimble (lower turnSpeed, so larger naturalRadius) vehicle. Hard-caps the combined vector to this vehicle's own real maxSpeed() - the autopilot should never demand more speed than the vehicle is actually capable of, no matter how large a transient correction need might be.
 		double horizontalTargetMagnitude = Math.sqrt(horizontalTarget.x * horizontalTarget.x + horizontalTarget.z * horizontalTarget.z);
-		if (horizontalTargetMagnitude > def.maxSpeed()) {
-			horizontalTarget = horizontalTarget.scale(def.maxSpeed() / horizontalTargetMagnitude);
+		if (horizontalTargetMagnitude > this.tudursvehiclemod$getScaledMaxSpeed()) {
+			horizontalTarget = horizontalTarget.scale(this.tudursvehiclemod$getScaledMaxSpeed() / horizontalTargetMagnitude);
 		}
 
 		double altitudeError = targetY - this.getY();
@@ -1194,7 +1194,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		double targetSpeedMagnitude = Math.sqrt(horizontalTarget.x * horizontalTarget.x + horizontalTarget.z * horizontalTarget.z);
 		Vec3 currentVelocity = this.getDeltaMovement();
 		double currentSpeedMagnitude = Math.sqrt(currentVelocity.x * currentVelocity.x + currentVelocity.z * currentVelocity.z);
-		double blendedSpeedMagnitude = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, (float) targetSpeedMagnitude, this.entityData.get(CAS_WAYPOINT_SPEED_FRACTION), def.maxSpeed());
+		double blendedSpeedMagnitude = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, (float) targetSpeedMagnitude, this.entityData.get(CAS_WAYPOINT_SPEED_FRACTION), this.tudursvehiclemod$getScaledMaxSpeed());
 		float orbitSpeedResponseBlend = Mth.clamp(def.acceleration(), 0.01f, 1.0f);
 		double blendedVerticalSpeed = currentVelocity.y + (targetVerticalSpeed - currentVelocity.y) * orbitSpeedResponseBlend;
 
@@ -1286,7 +1286,8 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 
 	/** See carrierSpeedBoostFlags's own doc - the actual catapult-launch-speed mechanic. Instantly overwrites this aircraft's own velocity so its HORIZONTAL magnitude equals kmh (converted to blocks/tick), preserving both the current vertical (Y) velocity component and the current horizontal DIRECTION unchanged - only the horizontal speed jumps. fallbackDirX/fallbackDirZ (a normalized horizontal direction) is used instead whenever the current horizontal velocity is too close to zero to normalize on its own (the common case: waypoint 0's own boost, applied at spawn before this aircraft has ever moved at all - see tudursvehiclemod$setCarrierSpeedBoosts()'s own doc). Deliberately does nothing else: no cruiseSpeed/throttle bookkeeping beyond what this.setVelocity() itself implies, since tudursvehiclemod$updateDroneWaypointAutopilot()'s own per-tick blend-toward-target logic already reads this aircraft's own actual velocity fresh every tick (NOT a separately-tracked "boosted until when" state) - the very next autopilot tick picks up this elevated speed as its own new starting point and blends away from it exactly like it would from any other current speed, with no special "boost decay" of this method's own needed at all. Never called more than once per waypoint (by construction: only from the passedWaypoint transition itself, or from setCarrierSpeedBoosts()'s own one-time waypoint-0 spawn handling - never from anywhere that runs every tick), so it can never compound/double-apply the way naively re-snapping every tick while "still at" the boosted waypoint would. */
 	private void tudursvehiclemod$applyCarrierSpeedBoost(float kmh, double fallbackDirX, double fallbackDirZ) {
-		float boostBlocksPerTick = tudursvehiclemod$kmhToBlocksPerTick(kmh);
+		// A launch speed is an absolute speed, so it takes the server's speed multiplier too (VehicleSpeedScaling) - the takeoff speed it is there to reach scales with the top speed.
+		float boostBlocksPerTick = tudursvehiclemod$kmhToBlocksPerTick(VehicleSpeedScaling.scale(this, kmh));
 		Vec3 currentVelocity = this.getDeltaMovement();
 		double horizontalMag = Math.sqrt(currentVelocity.x * currentVelocity.x + currentVelocity.z * currentVelocity.z);
 		double dirX;
@@ -2211,7 +2212,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		double dy = targetY - this.getY();
 		double dz = targetZ - this.getZ();
 
-		float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, waypoint.speedFraction(), def.maxSpeed());
+		float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, waypoint.speedFraction(), this.tudursvehiclemod$getScaledMaxSpeed());
 		// This vehicle's own ACTUAL yaw turn rate, not the raw un-multiplied def.turnSpeed(). scaled specifically by this waypoint's own turnManeuverabilityMultiplier (see DroneWaypoint's own doc).
 		float effectiveTurnRate = this.getYawFollowRateDegrees() * waypoint.turnManeuverabilityMultiplier();
 
@@ -2234,7 +2235,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 
 		Vec3 currentVelocity = this.getDeltaMovement();
 		double currentSpeedMagnitude = Math.sqrt(currentVelocity.x * currentVelocity.x + currentVelocity.z * currentVelocity.z);
-		double blendedSpeedMagnitude = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, cruiseSpeedTarget, this.entityData.get(CAS_WAYPOINT_SPEED_FRACTION), def.maxSpeed());
+		double blendedSpeedMagnitude = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, cruiseSpeedTarget, this.entityData.get(CAS_WAYPOINT_SPEED_FRACTION), this.tudursvehiclemod$getScaledMaxSpeed());
 		float speedResponseBlend = Mth.clamp(def.acceleration(), 0.01f, 1.0f);
 		double blendedVerticalSpeed = currentVelocity.y + (targetVerticalSpeed - currentVelocity.y) * speedResponseBlend;
 
@@ -2330,7 +2331,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		double centerZ = mothership.getZ();
 		double targetY = mothership.getY() + CARRIER_FORMATION_WAIT_ALTITUDE;
 
-		float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, 0.6f, def.maxSpeed());
+		float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, 0.6f, this.tudursvehiclemod$getScaledMaxSpeed());
 		float effectiveTurnRate = this.getYawFollowRateDegrees();
 		double turnRateRadPerTick = Math.toRadians(Math.max(effectiveTurnRate, 0.1f));
 		double naturalRadius = Math.min(cruiseSpeedTarget / turnRateRadPerTick, CARRIER_FORMATION_WAIT_MAX_RADIUS);
@@ -2346,8 +2347,8 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 				.scale(radiusError * DRONE_ORBIT_RADIAL_CORRECTION_GAIN);
 		Vec3 horizontalTarget = tangential.scale(cruiseSpeedTarget).add(radialCorrection);
 		double horizontalTargetMagnitude = Math.sqrt(horizontalTarget.x * horizontalTarget.x + horizontalTarget.z * horizontalTarget.z);
-		if (horizontalTargetMagnitude > def.maxSpeed()) {
-			horizontalTarget = horizontalTarget.scale(def.maxSpeed() / horizontalTargetMagnitude);
+		if (horizontalTargetMagnitude > this.tudursvehiclemod$getScaledMaxSpeed()) {
+			horizontalTarget = horizontalTarget.scale(this.tudursvehiclemod$getScaledMaxSpeed() / horizontalTargetMagnitude);
 		}
 
 		double altitudeError = targetY - this.getY();
@@ -2366,7 +2367,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		double targetSpeedMagnitude = Math.sqrt(horizontalTarget.x * horizontalTarget.x + horizontalTarget.z * horizontalTarget.z);
 		Vec3 currentVelocity = this.getDeltaMovement();
 		double currentSpeedMagnitude = Math.sqrt(currentVelocity.x * currentVelocity.x + currentVelocity.z * currentVelocity.z);
-		double blendedSpeedMagnitude = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, (float) targetSpeedMagnitude, this.entityData.get(CAS_WAYPOINT_SPEED_FRACTION), def.maxSpeed());
+		double blendedSpeedMagnitude = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, (float) targetSpeedMagnitude, this.entityData.get(CAS_WAYPOINT_SPEED_FRACTION), this.tudursvehiclemod$getScaledMaxSpeed());
 		float orbitSpeedResponseBlend = Mth.clamp(def.acceleration(), 0.01f, 1.0f);
 		double blendedVerticalSpeed = currentVelocity.y + (targetVerticalSpeed - currentVelocity.y) * orbitSpeedResponseBlend;
 
@@ -2442,13 +2443,13 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 
 		Vec3 leaderVelocity = leader.getDeltaMovement();
 		double leaderHorizontalSpeed = Math.sqrt(leaderVelocity.x * leaderVelocity.x + leaderVelocity.z * leaderVelocity.z);
-		float baseTargetFraction = Mth.clamp((float) (leaderHorizontalSpeed / Math.max(1.0e-4f, def.maxSpeed())), 0.05f, 1.0f);
+		float baseTargetFraction = Mth.clamp((float) (leaderHorizontalSpeed / Math.max(1.0e-4f, this.tudursvehiclemod$getScaledMaxSpeed())), 0.05f, 1.0f);
 
 		// Per this whole method's own doc: signed, not the raw (always-positive) distance - a wingman ahead of where it should be needs to SLOW DOWN (negative adjustment), not speed up further just because it's still "far" from the target in absolute terms.
 		double alongTrackError = dx * leaderForwardX + dz * leaderForwardZ;
 		float speedAdjustment = Mth.clamp((float) (alongTrackError * DRONE_FORMATION_CATCH_UP_GAIN), -DRONE_FORMATION_MAX_SPEED_ADJUSTMENT, DRONE_FORMATION_MAX_SPEED_ADJUSTMENT);
 		float targetThrottleFraction = Mth.clamp(baseTargetFraction + speedAdjustment, 0.05f, 1.0f);
-		float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, targetThrottleFraction, def.maxSpeed());
+		float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, targetThrottleFraction, this.tudursvehiclemod$getScaledMaxSpeed());
 
 		float currentTrackedYaw = this.tudursvehiclemod$droneYawForNavigation();
 		float bearingToTarget = horizontalDistance > 1.0e-4 ? (float) Math.toDegrees(Math.atan2(-dx, dz)) : currentTrackedYaw;
@@ -2468,7 +2469,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 
 		Vec3 currentVelocity = this.getDeltaMovement();
 		double currentSpeedMagnitude = Math.sqrt(currentVelocity.x * currentVelocity.x + currentVelocity.z * currentVelocity.z);
-		double blendedSpeedMagnitude = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, cruiseSpeedTarget, this.entityData.get(CAS_WAYPOINT_SPEED_FRACTION), def.maxSpeed());
+		double blendedSpeedMagnitude = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, cruiseSpeedTarget, this.entityData.get(CAS_WAYPOINT_SPEED_FRACTION), this.tudursvehiclemod$getScaledMaxSpeed());
 		float verticalResponseBlend = Mth.clamp(def.acceleration(), 0.01f, 1.0f);
 		double blendedVerticalSpeed = currentVelocity.y + (targetVerticalSpeed - currentVelocity.y) * verticalResponseBlend;
 
@@ -2876,7 +2877,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		if (torpedoRun) {
 			Vec3 velocityForTurn = this.getDeltaMovement();
 			double turnSpeed = Math.max(Math.sqrt(velocityForTurn.x * velocityForTurn.x + velocityForTurn.z * velocityForTurn.z),
-					def.maxSpeed() * CARRIER_LOCK_PURSUIT_THROTTLE_FRACTION);
+					this.tudursvehiclemod$getScaledMaxSpeed() * CARRIER_LOCK_PURSUIT_THROTTLE_FRACTION);
 			double turnRadius = turnSpeed / Math.toRadians(Math.max(0.1f, effectiveTurnRate));
 			torpedoCommand = this.torpedoRunPlanner.update(selfPos.x, selfPos.z, currentTrackedYaw, targetPos.x, targetPos.z, pointMode ? this.torpedoPointYaw : target.getYRot(),
 					attackStartAltitude, attackStopAltitude, turnRadius);
@@ -2924,14 +2925,14 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 
 			// A real aircraft simply flying straight at roughly CARRIER_LOCK_CLIMB_ANGLE_DEGREES (45) climb angle is entirely sufficient. Computes the target horizontal/vertical speed split DIRECTLY from that fixed angle - unambiguous - rather than a gain-based computation, blended smoothly toward (not snapped instantly) via the same blend mechanisms ordinary pursuit already uses.
 			targetThrottleFraction = CARRIER_LOCK_SUPPRESSED_THROTTLE_FRACTION;
-			float suppressedCruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, targetThrottleFraction, def.maxSpeed());
+			float suppressedCruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, targetThrottleFraction, this.tudursvehiclemod$getScaledMaxSpeed());
 			double climbAngleRad = Math.toRadians(CARRIER_LOCK_CLIMB_ANGLE_DEGREES);
 			double targetHorizontalSpeed = suppressedCruiseSpeedTarget * Math.cos(climbAngleRad);
 			double targetClimbVerticalSpeed = suppressedCruiseSpeedTarget * Math.sin(climbAngleRad);
 
 			Vec3 currentVelocity = this.getDeltaMovement();
 			double currentHorizontalSpeedMagnitude = Math.sqrt(currentVelocity.x * currentVelocity.x + currentVelocity.z * currentVelocity.z);
-			horizontalSpeed = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentHorizontalSpeedMagnitude, (float) targetHorizontalSpeed, targetThrottleFraction, def.maxSpeed());
+			horizontalSpeed = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentHorizontalSpeedMagnitude, (float) targetHorizontalSpeed, targetThrottleFraction, this.tudursvehiclemod$getScaledMaxSpeed());
 			float verticalResponseBlend = Mth.clamp(def.acceleration(), 0.01f, 1.0f);
 			blendedVerticalSpeed = currentVelocity.y + (targetClimbVerticalSpeed - currentVelocity.y) * verticalResponseBlend;
 		} else if (torpedoRun) {
@@ -2948,14 +2949,14 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 			this.droneOrbitTrackedRoll = newRoll;
 
 			targetThrottleFraction = CARRIER_LOCK_PURSUIT_THROTTLE_FRACTION;
-			float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, targetThrottleFraction, def.maxSpeed());
+			float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, targetThrottleFraction, this.tudursvehiclemod$getScaledMaxSpeed());
 			// Level at the run altitude above the target for the whole attack - never diving toward it.
 			double altitudeError = (targetPos.y + torpedoRunAltitude) - selfPos.y;
 			double targetVerticalSpeed = Mth.clamp(altitudeError * DRONE_ORBIT_ALTITUDE_CORRECTION_GAIN, -cruiseSpeedTarget * 0.5, cruiseSpeedTarget * 0.5);
 
 			Vec3 currentVelocity = this.getDeltaMovement();
 			double currentSpeedMagnitude = Math.sqrt(currentVelocity.x * currentVelocity.x + currentVelocity.z * currentVelocity.z);
-			horizontalSpeed = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, cruiseSpeedTarget, targetThrottleFraction, def.maxSpeed());
+			horizontalSpeed = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, cruiseSpeedTarget, targetThrottleFraction, this.tudursvehiclemod$getScaledMaxSpeed());
 			float verticalResponseBlend = Mth.clamp(def.acceleration(), 0.01f, 1.0f);
 			blendedVerticalSpeed = currentVelocity.y + (targetVerticalSpeed - currentVelocity.y) * verticalResponseBlend;
 		} else if (approachingWaypointNow) {
@@ -2971,13 +2972,13 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 			this.droneOrbitTrackedRoll = newRoll;
 
 			targetThrottleFraction = CARRIER_LOCK_PURSUIT_THROTTLE_FRACTION;
-			float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, targetThrottleFraction, def.maxSpeed());
+			float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, targetThrottleFraction, this.tudursvehiclemod$getScaledMaxSpeed());
 			double altitudeError = approachWaypointPos.y - selfPos.y;
 			double targetVerticalSpeed = Mth.clamp(altitudeError * DRONE_ORBIT_ALTITUDE_CORRECTION_GAIN, -cruiseSpeedTarget * 0.5, cruiseSpeedTarget * 0.5);
 
 			Vec3 currentVelocity = this.getDeltaMovement();
 			double currentSpeedMagnitude = Math.sqrt(currentVelocity.x * currentVelocity.x + currentVelocity.z * currentVelocity.z);
-			horizontalSpeed = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, cruiseSpeedTarget, targetThrottleFraction, def.maxSpeed());
+			horizontalSpeed = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, cruiseSpeedTarget, targetThrottleFraction, this.tudursvehiclemod$getScaledMaxSpeed());
 			float verticalResponseBlend = Mth.clamp(def.acceleration(), 0.01f, 1.0f);
 			blendedVerticalSpeed = currentVelocity.y + (targetVerticalSpeed - currentVelocity.y) * verticalResponseBlend;
 		} else {
@@ -2990,7 +2991,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 			this.droneOrbitTrackedRoll = newRoll;
 
 			targetThrottleFraction = CARRIER_LOCK_PURSUIT_THROTTLE_FRACTION;
-			float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, targetThrottleFraction, def.maxSpeed());
+			float cruiseSpeedTarget = this.tudursvehiclemod$rampAutopilotThrottle(def, targetThrottleFraction, this.tudursvehiclemod$getScaledMaxSpeed());
 			// The dive-target Y itself is now targetPos.y PLUS a configurable offset (see CARRIER_LOCK_FALLING_WEAPON_DIVE_TARGET_Y_OFFSET's own doc for the default/override resolution) - a falling weapon (BOMB/DEPTH) attacking a ground/water target defaults to +20 (adjustable per Drone Center - carrierLockDiveTargetYOffsetOverride's own doc), every other case defaults to 0 (also adjustable, per the same direct request - "オフセット対象外の武器タイプの場合はデフォルト値を0としつつも調整可能"). The dive-toward-target STEERING itself (bearingToTarget just above) is otherwise completely unchanged from its own already-reverted behavior - this only shifts WHERE vertically the dive aims to end up.
 			boolean fallingWeaponForDiveOffset = groundOrWaterTarget
 					&& (attackWeapon.weaponType() == com.example.tudursvehiclemod.asset.WeaponType.BOMB
@@ -3007,7 +3008,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 
 			Vec3 currentVelocity = this.getDeltaMovement();
 			double currentSpeedMagnitude = Math.sqrt(currentVelocity.x * currentVelocity.x + currentVelocity.z * currentVelocity.z);
-			horizontalSpeed = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, cruiseSpeedTarget, targetThrottleFraction, def.maxSpeed());
+			horizontalSpeed = this.tudursvehiclemod$blendCruiseSpeedToward(def, (float) currentSpeedMagnitude, cruiseSpeedTarget, targetThrottleFraction, this.tudursvehiclemod$getScaledMaxSpeed());
 			float verticalResponseBlend = Mth.clamp(def.acceleration(), 0.01f, 1.0f);
 			blendedVerticalSpeed = currentVelocity.y + (targetVerticalSpeed - currentVelocity.y) * verticalResponseBlend;
 		}
@@ -3322,7 +3323,7 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		if (!justLanded) {
 			return;
 		}
-		double threshold = def.maxSpeed() * LANDING_IMPACT_SPEED_FRACTION;
+		double threshold = this.tudursvehiclemod$getScaledMaxSpeed() * LANDING_IMPACT_SPEED_FRACTION;
 		if (preMoveSpeed < threshold) {
 			return;
 		}

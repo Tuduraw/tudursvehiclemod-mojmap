@@ -89,6 +89,10 @@ LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" \
 | `/tvmtest deck <名前>` | 甲板に防具立て・ゾンビ・ボート・豚を落とし、静止位置を記録 |
 | `/tvmtest deckwalk setup\|board\|sail\|report` | クライアントの甲板歩行テスト用(下記) |
 | `/tvmtest dmgscale setup` → `/tvmtest dmgscale <名前>` | ダメージ・爆発の倍率(サーバー設定)を6通りに切り替え、ハスクへの命中・石ブロック上の爆発(威力3)で、体力・ノックバック速度・壊れたブロック数・火の数を記録。setupで(3000, 3000)付近を強制ロードしてから数秒待って実行。終了後は倍率を1に戻す(ファイルには保存しない) |
+| `/tvmtest speedtest setup` → `/tvmtest speedtest <名前>` | 全車両の最高速度(倍率込み、km/h)を記録。偽プレイヤーは座席に乗れないため、実際の走行は下の`speeddrive`で確認 |
+| `/tvmtest setspeed <倍率>` | 車両の速度倍率をメモリ上だけ変更(ファイルには保存しない)。接続中のクライアントへの送信の確認用 |
+| `/tvmtest setspeedtype <種類> <倍率>` | 種類ごとの速度倍率をメモリ上だけ変更(0で項目を消して共通に戻す)。キーはファイルと同じ書き方 |
+| `/tvmtest speeddrive <プレイヤー名>` | そのプレイヤーを(-3000, 0)のハーフトラックの運転席に乗せる。`-Dtvmtest.speedsync=1`のクライアントが200tick全速前進し、クライアント側での最高速度と倍率をログに出す |
 
 ## 負荷の計測
 

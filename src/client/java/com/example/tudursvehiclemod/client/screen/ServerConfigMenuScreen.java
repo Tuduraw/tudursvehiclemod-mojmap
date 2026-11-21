@@ -147,6 +147,24 @@ public class ServerConfigMenuScreen extends Screen {
 				}));
 
 		entries.add(new ConfigEntry(
+				tudursvehiclemod$multiplierLabel("gui.tudursvehiclemod.server_config.vehicle_speed_multiplier", config.vehicleSpeedMultiplier),
+				"gui.tudursvehiclemod.server_config.vehicle_speed_multiplier.tooltip",
+				() -> config.vehicleSpeedMultiplier = tudursvehiclemod$nextSpeedMultiplier(config.vehicleSpeedMultiplier)));
+
+		// Per entity type (in place of the common one for that type); "Common" until one is chosen. An addon's types: in the file (Readme_cfg.md).
+		for (String type : new String[] {"aircraft", "vtol", "helicopter", "car", "ship", "submarine"}) {
+			String id = "tudursvehiclemod:" + type;
+			Double own = tudursvehiclemod$typeSpeed(config, id);
+			Component typeName = Component.translatable("entity.tudursvehiclemod." + type);
+			Component label = own == null
+					? Component.translatable("gui.tudursvehiclemod.server_config.vehicle_speed_multiplier_type.common", typeName)
+					: Component.translatable("gui.tudursvehiclemod.server_config.vehicle_speed_multiplier_type", typeName, tudursvehiclemod$multiplierText(own));
+			entries.add(new ConfigEntry(label,
+					"gui.tudursvehiclemod.server_config.vehicle_speed_multiplier_type.tooltip",
+					() -> tudursvehiclemod$cycleTypeSpeed(config, id)));
+		}
+
+		entries.add(new ConfigEntry(
 				tudursvehiclemod$multiplierLabel("gui.tudursvehiclemod.server_config.weapon_damage_multiplier", config.weaponDamageMultiplier),
 				"gui.tudursvehiclemod.server_config.weapon_damage_multiplier.tooltip",
 				() -> config.weaponDamageMultiplier = tudursvehiclemod$nextMultiplier(config.weaponDamageMultiplier)));
@@ -167,6 +185,12 @@ public class ServerConfigMenuScreen extends Screen {
 	/** The steps the multiplier buttons cycle through; any other value (set in the file) moves on to the next step above it. */
 	private static final double[] MULTIPLIER_STEPS = {0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 5.0, 10.0};
 
+	/** The vehicle speed multiplier's steps: the same without 0 (nothing could move). */
+	private static double tudursvehiclemod$nextSpeedMultiplier(double current) {
+		double next = tudursvehiclemod$nextMultiplier(current);
+		return next > 0.0 ? next : MULTIPLIER_STEPS[1];
+	}
+
 	private static double tudursvehiclemod$nextMultiplier(double current) {
 		for (double step : MULTIPLIER_STEPS) {
 			if (step > current + 1.0E-6) {
@@ -176,14 +200,49 @@ public class ServerConfigMenuScreen extends Screen {
 		return MULTIPLIER_STEPS[0];
 	}
 
+	/** The type's own speed multiplier in the config, under its full id or its short one ("aircraft"), or null (uses the common one). */
+	private static Double tudursvehiclemod$typeSpeed(VehicleModServerConfig config, String id) {
+		if (config.vehicleSpeedMultiplierByType == null) {
+			return null;
+		}
+		for (java.util.Map.Entry<String, Double> entry : config.vehicleSpeedMultiplierByType.entrySet()) {
+			if (entry.getValue() != null && com.example.tudursvehiclemod.entity.VehicleSpeedScaling.normalizeKey(entry.getKey()).equals(id)) {
+				return entry.getValue();
+			}
+		}
+		return null;
+	}
+
+	/** Common -> x0.25 -> ... -> x10 -> Common. */
+	private static void tudursvehiclemod$cycleTypeSpeed(VehicleModServerConfig config, String id) {
+		Double own = tudursvehiclemod$typeSpeed(config, id);
+		if (config.vehicleSpeedMultiplierByType == null) {
+			config.vehicleSpeedMultiplierByType = new java.util.LinkedHashMap<>();
+		}
+		config.vehicleSpeedMultiplierByType.keySet().removeIf(key -> com.example.tudursvehiclemod.entity.VehicleSpeedScaling.normalizeKey(key).equals(id));
+		if (own == null) {
+			config.vehicleSpeedMultiplierByType.put(id, MULTIPLIER_STEPS[1]);
+			return;
+		}
+		double next = tudursvehiclemod$nextMultiplier(own);
+		if (next > own) {
+			config.vehicleSpeedMultiplierByType.put(id, next);
+		}
+		// Past the last step: back to the common one (no entry).
+	}
+
 	/** "x1.5", or the label's ".zero" text at 0 (what 0 means differs per setting). */
 	private static Component tudursvehiclemod$multiplierLabel(String labelKey, double value) {
 		if (!(value > 0.0)) {
 			return Component.translatable(labelKey + ".zero");
 		}
+		return Component.translatable(labelKey, tudursvehiclemod$multiplierText(value));
+	}
+
+	private static String tudursvehiclemod$multiplierText(double value) {
 		String number = value == Math.rint(value) ? String.format(java.util.Locale.ROOT, "%.1f", value)
 				: String.format(java.util.Locale.ROOT, "%s", (float) value);
-		return Component.translatable(labelKey, "x" + number);
+		return "x" + number;
 	}
 
 	/** Adds one row and returns the next row's own Y - identical pattern to ConfigMenuScreen's own tudursvehiclemod$addRow(), except this saves VehicleModServerConfig instead. */

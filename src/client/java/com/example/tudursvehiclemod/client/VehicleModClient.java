@@ -193,6 +193,8 @@ public class VehicleModClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		// A-11: every per-session client state is reset when leaving a server, joining one and changing dimension. A TV missile or remote control still active at a disconnect used to stay "active" into every later world - the view stayed locked, since the end notice never came (the server sends it only within the missile's own world).
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> tudursvehiclemod$resetSessionState()));
+		// Leaving a server: the next one sends its own speed multiplier (one without this mod's payloads never does - 1). Not on a world change, which the server doesn't resend it for.
+		net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> com.example.tudursvehiclemod.entity.VehicleSpeedScaling.setClientSettings(null));
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> tudursvehiclemod$resetSessionState());
 		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> tudursvehiclemod$resetSessionState());
 		config = VehicleModConfig.load();
@@ -1057,6 +1059,12 @@ public class VehicleModClient implements ClientModInitializer {
 										payload.mainHand(), context.player().getItemInHand(hand)));
 							}
 						}));
+
+		// The server's vehicle speed multipliers, so this client moves vehicles at the same speeds the server does.
+		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
+				com.example.tudursvehiclemod.network.ServerSettingsSyncPayload.ID, (payload, context) ->
+					context.client().execute(() -> com.example.tudursvehiclemod.entity.VehicleSpeedScaling.setClientSettings(
+							new com.example.tudursvehiclemod.entity.VehicleSpeedScaling.Settings(payload.vehicleSpeedMultiplier(), payload.vehicleSpeedMultiplierByType()))));
 
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
 				com.example.tudursvehiclemod.network.DroneStickNameOpenPayload.ID, (payload, context) ->

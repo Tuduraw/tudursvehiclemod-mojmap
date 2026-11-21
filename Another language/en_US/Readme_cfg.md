@@ -5,7 +5,10 @@ Files covered:
 - `config/tudursvehiclemod-server.json` (server settings)
 
 Both are JSON, and are generated automatically with default values on
-first launch if they don't exist. Changing a setting from the in-game
+first launch if they don't exist. When a file written by an older version lacks a
+setting added since then, that setting is added to the file with its
+default value at startup (values already in the file are kept as they
+are, and settings this version doesn't know are kept too). Changing a setting from the in-game
 settings screen saves to the file immediately, so there's normally no
 need to edit these files by hand.
 
@@ -243,6 +246,41 @@ with no restart.
   is released, and those projectiles are removed - without exploding -
   the next time their chunk loads.
 
+
+### Vehicle speed multiplier (`vehicleSpeedMultiplier`) - immediate
+
+- Values on the screen: x0.25 / x0.5 / x0.75 / x1 / x1.25 / x1.5 / x2 /
+  x3 / x5 / x10 (default: x1). Editing the file directly allows any value
+  (values under 0.05 are used as 0.05).
+- Multiplies every vehicle's top speed: each vehicle's `max_speed`, and
+  the settings that give a speed directly (`SweepWingSpeed` for a folded
+  swing wing, a submarine's `dive_max_speed`, a catapult launch's speed).
+  Speeds set as a fraction of the top speed (throttle steps, stall speed,
+  autopilot cruise speed) follow along by themselves.
+- Acceleration, turning and the rest of a vehicle's handling don't change,
+  so at a higher multiplier a vehicle takes longer to reach its top speed.
+- Vehicle movement is also worked out on each player's client, so the
+  server sends this setting to every player on joining and whenever it
+  changes.
+
+### Vehicle speed multiplier per type (`vehicleSpeedMultiplierByType`) - immediate
+
+- Values on the screen: Common / x0.25 to x10 (default: Common). The screen
+  lists six types: aircraft, VTOL, helicopter, car, ship and submarine.
+- A speed multiplier used only for vehicles of a particular entity type.
+  A type with its own value uses it; a type without one (every type, at
+  first) uses the common vehicle speed multiplier above.
+- In the file, the keys are entity type ids. This mod's own types can be
+  given by name alone, such as `"aircraft"`; an addon's vehicles by that
+  addon's id (for example `"mcheliaddon:mcheli_plane"`). Removing an entry goes
+  back to the common setting.
+
+```json
+"vehicleSpeedMultiplierByType": {
+  "aircraft": 1.5,
+  "tudursvehiclemod:ship": 2.0
+}
+```
 
 ### Weapon damage multiplier (`weaponDamageMultiplier`) - immediate
 

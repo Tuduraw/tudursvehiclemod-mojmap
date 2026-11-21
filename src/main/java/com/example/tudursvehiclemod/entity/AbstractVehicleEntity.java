@@ -881,7 +881,12 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		if (config.variableSweepWing() && this.tudursvehiclemod$isWingFolded()) {
 			wingAdjustedMaxSpeed = config.sweepWingSpeed() > 0f ? config.sweepWingSpeed() : defaultMaxSpeed;
 		}
-		return wingAdjustedMaxSpeed * this.tudursvehiclemod$getAmmoPartSpeedMultiplier();
+		return wingAdjustedMaxSpeed * this.tudursvehiclemod$getAmmoPartSpeedMultiplier() * VehicleSpeedScaling.multiplier(this);
+	}
+
+	/** def.maxSpeed() times the server's vehicle speed multiplier (VehicleSpeedScaling) - the top speed every speed calculation of this vehicle works from. tudursvehiclemod$getEffectiveMaxSpeed() adds the swing wing and ammo part adjustments on top. */
+	public float tudursvehiclemod$getScaledMaxSpeed() {
+		return VehicleSpeedScaling.scale(this, this.getDefinition().maxSpeed());
 	}
 
 	/** Effective turn/maneuverability rate (this vehicle's own def.turnSpeed(), the base value every subclass' own turn/roll/pitch rate is ultimately derived from) accounting for every currently-visible AmmoPart's own display_penalty maneuverability component. */

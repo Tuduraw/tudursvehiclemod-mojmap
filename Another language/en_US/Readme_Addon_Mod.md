@@ -846,6 +846,22 @@ VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE.register(projectile -> {
 
 - Called on the server. One listener returning `false` is enough
 
+### Following the server's vehicle speed multiplier
+
+The server's vehicle speed multiplier (`Readme_cfg.md`) can be read from `entity.VehicleSpeedScaling`.
+It is a common value plus optional values per entity type (an addon's vehicle types can be given by their
+ids too); a type without its own value uses the common one.
+Reading a base-mod vehicle's top speed with `tudursvehiclemod$getEffectiveMaxSpeed()` (swing wing and
+ammo part adjustments included) or `tudursvehiclemod$getScaledMaxSpeed()` (`max_speed` times the
+multiplier) follows it; `getDefinition().maxSpeed()` is the definition's own value, without it.
+
+| Method | What it does |
+|---|---|
+| `VehicleSpeedScaling.multiplier(vehicle)` | The multiplier for that vehicle (its entity type): the setting on the server, on a client the value the server sent (1 until it has) |
+| `VehicleSpeedScaling.multiplier(level, entityType)` | The multiplier for an entity type |
+| `VehicleSpeedScaling.multiplier(level)` | The common multiplier |
+| `VehicleSpeedScaling.scale(vehicle, speed)` | The speed times that vehicle's multiplier |
+
 ### Following the server's damage and explosion multipliers
 
 The server's weapon damage, explosion blast and explosion block destruction multipliers

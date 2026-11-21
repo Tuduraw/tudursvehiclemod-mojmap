@@ -836,6 +836,22 @@ VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE.register(projectile -> {
 
 - サーバー側で呼ばれます。リスナーのうち1つでも`false`を返せば無効になります
 
+### サーバーの車両の速度倍率に従う
+
+サーバー設定の車両の速度倍率(`Readme_cfg.md`)は`entity.VehicleSpeedScaling`から読めます。
+倍率は共通の値と、エンティティタイプごとの値(アドオンの車両の種類も、そのIDで指定できます)からなり、
+個別の値がない種類には共通の値が使われます。
+前提MODの車両は、最高速度を`tudursvehiclemod$getEffectiveMaxSpeed()`(可変翼・弾薬パーツの補正込み)
+または`tudursvehiclemod$getScaledMaxSpeed()`(`max_speed`に倍率を掛けた値)で読むと倍率に従います。
+`getDefinition().maxSpeed()`は定義そのままの値(倍率なし)です。
+
+| メソッド | 内容 |
+|---|---|
+| `VehicleSpeedScaling.multiplier(vehicle)` | その車両(のエンティティタイプ)の倍率。サーバーでは設定値、クライアントではサーバーから送られた値(未受信なら1) |
+| `VehicleSpeedScaling.multiplier(level, entityType)` | エンティティタイプを指定した倍率 |
+| `VehicleSpeedScaling.multiplier(level)` | 共通の倍率 |
+| `VehicleSpeedScaling.scale(vehicle, speed)` | 速度にその車両の倍率を掛けた値 |
+
 ### サーバーのダメージ・爆発の倍率に従う
 
 サーバー設定の武器ダメージ倍率・爆風倍率・爆発のブロック破壊倍率(`Readme_cfg.md`)は、

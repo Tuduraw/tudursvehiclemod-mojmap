@@ -19,6 +19,10 @@ public class TvmTestClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+		if (System.getProperty("tvmtest.speedsync") != null) {
+			ClientTickEvents.END_CLIENT_TICK.register(this::speedSyncTick);
+			return;
+		}
 		if (System.getProperty("tvmtest.deck") != null) {
 			ClientTickEvents.END_CLIENT_TICK.register(this::deckTick);
 			return;
@@ -27,6 +31,59 @@ public class TvmTestClient implements ClientModInitializer {
 			return;
 		}
 		ClientTickEvents.END_CLIENT_TICK.register(this::tick);
+	}
+
+	// ------------------------------------------------------------------ speed sync
+	// -Dtvmtest.speedsync=1: logs the vehicle speed multiplier this client uses (entity.VehicleSpeedScaling) every 100 ticks in a world, for 600 ticks, then quits - change it on the server meanwhile (/tvmtest setspeed <x>) to see it follow.
+	int speedSyncTicks;
+	int driveTicks, driveRuns, driveDoneVehicle = -1;
+	double drivePeak, driveLastX, driveLastZ, driveStartX, driveStartZ;
+
+	void speedSyncTick(MinecraftClient client) {
+		if (client.world == null || client.player == null) {
+			return;
+		}
+		speedSyncTicks++;
+		if (speedSyncTicks == 1 && client.player.getVehicle() != null) {
+			// Still seated from the last session: not one /tvmtest speeddrive gave us.
+			driveDoneVehicle = client.player.getVehicle().getId();
+		}
+		if (speedSyncTicks % 100 == 0) {
+			TvmTest.LOG.info("[tvmtest] SPEEDSYNC tick={} multiplier={}", speedSyncTicks,
+					com.example.tudursvehiclemod.entity.VehicleSpeedScaling.multiplier(client.world));
+		}
+		// Once seated in a vehicle (/tvmtest speeddrive <name> on the server): full forward for 200 ticks, peak speed as this client moves it.
+		if (client.player.getVehicle() instanceof com.example.tudursvehiclemod.entity.AbstractVehicleEntity vehicle && vehicle.getId() != driveDoneVehicle) {
+			client.options.forwardKey.setPressed(true);
+			if (driveTicks > 0) {
+				double dx = vehicle.getX() - driveLastX, dz = vehicle.getZ() - driveLastZ;
+				double step = Math.sqrt(dx * dx + dz * dz);
+				// A jump of more than 3 blocks in a tick is a position correction (boarding, a teleport), not driving.
+				if (step < 3.0) {
+					drivePeak = Math.max(drivePeak, step);
+				}
+				if (driveTicks == 150) {
+					driveStartX = vehicle.getX();
+					driveStartZ = vehicle.getZ();
+				}
+			}
+			driveLastX = vehicle.getX();
+			driveLastZ = vehicle.getZ();
+			driveTicks++;
+			if (driveTicks == 200) {
+				client.options.forwardKey.setPressed(false);
+				double last50 = Math.sqrt(Math.pow(vehicle.getX() - driveStartX, 2) + Math.pow(vehicle.getZ() - driveStartZ, 2)) / 50.0;
+				TvmTest.LOG.info("[tvmtest] SPEEDDRIVE peakKmh={} last50Kmh={} multiplier={} cap={}", Math.round(drivePeak * 72.0 * 10) / 10.0, Math.round(last50 * 72.0 * 10) / 10.0,
+						com.example.tudursvehiclemod.entity.VehicleSpeedScaling.multiplier(vehicle), vehicle.tudursvehiclemod$getEffectiveMaxSpeed() * 72.0);
+				drivePeak = 0;
+				driveTicks = 0;
+				driveRuns++;
+				driveDoneVehicle = vehicle.getId();
+			}
+		}
+		if (speedSyncTicks >= 6000 || driveRuns >= 2) {
+			client.scheduleStop();
+		}
 	}
 
 	// ------------------------------------------------------------------ deck walk

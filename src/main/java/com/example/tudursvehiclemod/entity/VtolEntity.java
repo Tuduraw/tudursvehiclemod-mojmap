@@ -283,7 +283,7 @@ public class VtolEntity extends AircraftEntity {
 		float desiredYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
 		float newYaw = stepTowardAngle(this.getYRot(), desiredYaw, effectiveTurnRate);
 
-		float baseApproachSpeed = def.maxSpeed() * Math.max(homePoint.speedFraction(), 0.3f);
+		float baseApproachSpeed = this.tudursvehiclemod$getScaledMaxSpeed() * Math.max(homePoint.speedFraction(), 0.3f);
 		float decelFactor = (float) Mth.clamp(horizontalDistance / 20.0, 0.2, 1.0);
 		float cruiseSpeedTarget = baseApproachSpeed * decelFactor;
 
@@ -504,7 +504,7 @@ public class VtolEntity extends AircraftEntity {
 			// Scaled by def.vtolHoverSpeedFraction() instead now (10% of
 			// maxSpeed by default - see that field's own doc), a
 			// project-specific, per-vehicle-configurable directive.
-			float vtolHoverSpeed = def.maxSpeed() * def.vtolHoverSpeedFraction();
+			float vtolHoverSpeed = this.tudursvehiclemod$getScaledMaxSpeed() * def.vtolHoverSpeedFraction();
 			Vec3 targetHorizontal = effectivelyGrounded ? Vec3.ZERO
 					: forward.scale(forwardInput * vtolHoverSpeed).add(right.scale(lateralInput * vtolHoverSpeed));
 			// Right after a toHelicopter
@@ -617,8 +617,8 @@ public class VtolEntity extends AircraftEntity {
 		// sudden drop/recovery-pitch cycle that reads as violent
 		// vertical shaking. Computed HERE, before that decision, so it
 		// can actually gate it now instead.
-		float speedFraction = def.maxSpeed() > 0.001f
-				? Mth.clamp(this.cruiseSpeed / (def.maxSpeed() * 0.6f), 0f, 1f) : 1f;
+		float speedFraction = this.tudursvehiclemod$getScaledMaxSpeed() > 0.001f
+				? Mth.clamp(this.cruiseSpeed / (this.tudursvehiclemod$getScaledMaxSpeed() * 0.6f), 0f, 1f) : 1f;
 		// Per this same reasoning: for a toAircraft transition
 		// specifically, the transition itself is no longer allowed to
 		// actually FINISH (flip HELICOPTER_MODE, let TRANSITION_TICKS_REMAINING

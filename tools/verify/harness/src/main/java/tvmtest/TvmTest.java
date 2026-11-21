@@ -95,6 +95,7 @@ public class TvmTest implements ModInitializer {
 		});
 		ServerTickEvents.END_SERVER_TICK.register(this::tick);
 		ServerTickEvents.END_SERVER_TICK.register(srv -> deckServerTick());
+		ServerTickEvents.END_SERVER_TICK.register(srv -> SpeedTest.tick());
 		CommandRegistrationCallback.EVENT.register((dispatcher, access, env) -> dispatcher.register(
 				CommandManager.literal("tvmtest").requires(src -> true)
 						.then(CommandManager.literal("run").then(CommandManager.argument("name", StringArgumentType.word())
@@ -126,6 +127,19 @@ public class TvmTest implements ModInitializer {
 																StringArgumentType.getString(ctx, "mode")); return 1; }))))))
 						.then(CommandManager.literal("deck").then(CommandManager.argument("name", StringArgumentType.word())
 								.executes(ctx -> { deck(ctx.getSource().getServer(), StringArgumentType.getString(ctx, "name")); return 1; })))
+						.then(CommandManager.literal("setspeed").then(CommandManager.argument("value", com.mojang.brigadier.arguments.DoubleArgumentType.doubleArg(0))
+								.executes(ctx -> { com.example.tudursvehiclemod.VehicleModServerConfig.get().vehicleSpeedMultiplier = com.mojang.brigadier.arguments.DoubleArgumentType.getDouble(ctx, "value");
+									LOG.info("[tvmtest] SETSPEED {}", com.example.tudursvehiclemod.VehicleModServerConfig.get().vehicleSpeedMultiplier); return 1; })))
+						.then(CommandManager.literal("speedtest").then(CommandManager.argument("name", StringArgumentType.word())
+								.executes(ctx -> { String n = StringArgumentType.getString(ctx, "name");
+									if (n.equals("setup")) SpeedTest.setup(this, ctx.getSource().getWorld()); else SpeedTest.run(this, ctx.getSource().getWorld(), n); return 1; })))
+						.then(CommandManager.literal("speeddrive").then(CommandManager.argument("player", StringArgumentType.word())
+								.executes(ctx -> { SpeedTest.board(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "player")); return 1; })))
+						.then(CommandManager.literal("setspeedtype").then(CommandManager.argument("type", StringArgumentType.string()).then(CommandManager.argument("value", com.mojang.brigadier.arguments.DoubleArgumentType.doubleArg(0))
+								.executes(ctx -> { String type = StringArgumentType.getString(ctx, "type"); double value = com.mojang.brigadier.arguments.DoubleArgumentType.getDouble(ctx, "value");
+									java.util.Map<String, Double> map = com.example.tudursvehiclemod.VehicleModServerConfig.get().vehicleSpeedMultiplierByType;
+									if (value <= 0) map.remove(type); else map.put(type, value);
+									LOG.info("[tvmtest] SETSPEEDTYPE {}", map); return 1; }))))
 						.then(CommandManager.literal("dmgscale").then(CommandManager.argument("name", StringArgumentType.word())
 								.executes(ctx -> { String n = StringArgumentType.getString(ctx, "name");
 									if (n.equals("setup")) DmgScaleTest.setup(ctx.getSource().getWorld()); else DmgScaleTest.run(ctx.getSource().getWorld(), n); return 1; })))

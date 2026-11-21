@@ -900,7 +900,8 @@ public class SubmarineEntity extends AbstractVehicleEntity implements FreeCamera
 	}
 
 	protected float tudursvehiclemod$getDiveMaxSpeed(VehicleDefinition def) {
-		return def.diveMaxSpeed().orElse(this.tudursvehiclemod$getEffectiveMaxSpeed() / 3f);
+		// An explicit dive_max_speed is an absolute speed, so it takes the server's speed multiplier too (VehicleSpeedScaling); the fallback is already scaled.
+		return def.diveMaxSpeed().map(speed -> VehicleSpeedScaling.scale(this, speed)).orElse(this.tudursvehiclemod$getEffectiveMaxSpeed() / 3f);
 	}
 
 	@Override
