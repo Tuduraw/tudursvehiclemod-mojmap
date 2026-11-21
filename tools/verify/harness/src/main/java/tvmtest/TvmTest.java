@@ -126,6 +126,9 @@ public class TvmTest implements ModInitializer {
 																StringArgumentType.getString(ctx, "mode")); return 1; }))))))
 						.then(CommandManager.literal("deck").then(CommandManager.argument("name", StringArgumentType.word())
 								.executes(ctx -> { deck(ctx.getSource().getServer(), StringArgumentType.getString(ctx, "name")); return 1; })))
+						.then(CommandManager.literal("dmgscale").then(CommandManager.argument("name", StringArgumentType.word())
+								.executes(ctx -> { String n = StringArgumentType.getString(ctx, "name");
+									if (n.equals("setup")) DmgScaleTest.setup(ctx.getSource().getWorld()); else DmgScaleTest.run(ctx.getSource().getWorld(), n); return 1; })))
 						.then(CommandManager.literal("probe").executes(ctx -> { probe(ctx.getSource().getWorld()); return 1; }))
 						.then(CommandManager.literal("gallery").executes(ctx -> { gallery(ctx.getSource().getWorld()); return 1; }))
 						.then(CommandManager.literal("deckwalk").then(CommandManager.argument("step", StringArgumentType.word())

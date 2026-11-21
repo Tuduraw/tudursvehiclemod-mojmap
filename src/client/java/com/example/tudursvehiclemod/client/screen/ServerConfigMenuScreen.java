@@ -146,7 +146,44 @@ public class ServerConfigMenuScreen extends Screen {
 					}
 				}));
 
+		entries.add(new ConfigEntry(
+				tudursvehiclemod$multiplierLabel("gui.tudursvehiclemod.server_config.weapon_damage_multiplier", config.weaponDamageMultiplier),
+				"gui.tudursvehiclemod.server_config.weapon_damage_multiplier.tooltip",
+				() -> config.weaponDamageMultiplier = tudursvehiclemod$nextMultiplier(config.weaponDamageMultiplier)));
+
+		entries.add(new ConfigEntry(
+				tudursvehiclemod$multiplierLabel("gui.tudursvehiclemod.server_config.explosion_blast_multiplier", config.explosionBlastMultiplier),
+				"gui.tudursvehiclemod.server_config.explosion_blast_multiplier.tooltip",
+				() -> config.explosionBlastMultiplier = tudursvehiclemod$nextMultiplier(config.explosionBlastMultiplier)));
+
+		entries.add(new ConfigEntry(
+				tudursvehiclemod$multiplierLabel("gui.tudursvehiclemod.server_config.explosion_block_multiplier", config.explosionBlockMultiplier),
+				"gui.tudursvehiclemod.server_config.explosion_block_multiplier.tooltip",
+				() -> config.explosionBlockMultiplier = tudursvehiclemod$nextMultiplier(config.explosionBlockMultiplier)));
+
 		return entries;
+	}
+
+	/** The steps the multiplier buttons cycle through; any other value (set in the file) moves on to the next step above it. */
+	private static final double[] MULTIPLIER_STEPS = {0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 5.0, 10.0};
+
+	private static double tudursvehiclemod$nextMultiplier(double current) {
+		for (double step : MULTIPLIER_STEPS) {
+			if (step > current + 1.0E-6) {
+				return step;
+			}
+		}
+		return MULTIPLIER_STEPS[0];
+	}
+
+	/** "x1.5", or the label's ".zero" text at 0 (what 0 means differs per setting). */
+	private static Component tudursvehiclemod$multiplierLabel(String labelKey, double value) {
+		if (!(value > 0.0)) {
+			return Component.translatable(labelKey + ".zero");
+		}
+		String number = value == Math.rint(value) ? String.format(java.util.Locale.ROOT, "%.1f", value)
+				: String.format(java.util.Locale.ROOT, "%s", (float) value);
+		return Component.translatable(labelKey, "x" + number);
 	}
 
 	/** Adds one row and returns the next row's own Y - identical pattern to ConfigMenuScreen's own tudursvehiclemod$addRow(), except this saves VehicleModServerConfig instead. */

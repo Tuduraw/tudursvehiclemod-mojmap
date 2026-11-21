@@ -2123,7 +2123,8 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 		// configured. Block destruction (if actually configured) is
 		// instead always handled manually below, independent of whether
 		// the explosion happens to be underwater or not.
-		this.level().explode(this, x, y, z, power, this.flaming, net.minecraft.world.level.Level.ExplosionInteraction.NONE);
+		// With the server's blast and block destruction multipliers (DamageScaling): the blast's entity damage, and how far vanilla sets fire.
+		com.example.tudursvehiclemod.entity.DamageScaling.explode(this.level(), this, x, y, z, power, this.flaming, net.minecraft.world.level.Level.ExplosionInteraction.NONE);
 		if (this.level() instanceof ServerLevel serverWorld) {
 			// ExplosionBlock's own value (if explicitly set - see its
 			// own field doc) is used directly as the destruction
@@ -2141,8 +2142,11 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 			// itself, so it always wins over that setting rather than
 			// the other way around.
 			if (this.explosionDestroysBlocks && !this.fuelAirExplosive) {
-				float blockPower = this.explosionBlockPower >= 0f ? this.explosionBlockPower : power;
-				tudursvehiclemod$destroyBlocksManually(serverWorld, x, y, z, blockPower);
+				float blockPower = (this.explosionBlockPower >= 0f ? this.explosionBlockPower : power)
+						* com.example.tudursvehiclemod.entity.DamageScaling.explosionBlock();
+				if (blockPower > 0f) {
+					tudursvehiclemod$destroyBlocksManually(serverWorld, x, y, z, blockPower);
+				}
 			}
 			// This mod's own custom explosion flash (see
 			// tudursvehiclemod$spawnBigExplosionParticles()'s own doc) -
@@ -2298,6 +2302,11 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 		}
 		net.minecraft.world.phys.AABB searchBox = new net.minecraft.world.phys.AABB(
 				x - maxRadius, y - maxRadius, z - maxRadius, x + maxRadius, y + maxRadius, z + maxRadius);
+		// The server's blast multiplier (DamageScaling); the radius stays the explosion's own.
+		float blastScale = com.example.tudursvehiclemod.entity.DamageScaling.explosionBlast();
+		if (blastScale <= 0f) {
+			return;
+		}
 		net.minecraft.world.damagesource.DamageSource damageSource = serverWorld.damageSources().explosion(this, this.getOwner());
 		for (com.example.tudursvehiclemod.entity.AbstractVehicleEntity vehicle : this.level().getEntitiesOfClass(
 				com.example.tudursvehiclemod.entity.AbstractVehicleEntity.class, searchBox, v -> !v.isRemoved())) {
@@ -2305,7 +2314,7 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 			if (distance >= maxRadius) {
 				continue;
 			}
-			float falloffDamage = (float) (this.damage * (1.0 - distance / maxRadius));
+			float falloffDamage = (float) (this.damage * blastScale * (1.0 - distance / maxRadius));
 			if (falloffDamage <= 0f) {
 				continue;
 			}
@@ -2504,7 +2513,8 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 		super.onHitEntity(hitResult);
 		if (!this.level().isClientSide()) {
 			DamageSource source = this.damageSources().thrown(this, this.getOwner());
-			hitResult.getEntity().hurtServer((net.minecraft.server.level.ServerLevel) this.level(), source, this.damage);
+			// With the server's weapon damage multiplier; at 0 a living target is only knocked back (DamageScaling.hitEntity()).
+			com.example.tudursvehiclemod.entity.DamageScaling.hitEntity((net.minecraft.server.level.ServerLevel) this.level(), hitResult.getEntity(), source, this.damage, this);
 			if (this.flaming && this.explosionPower <= 0f) {
 				// Explosion (below) already sets things on fire itself when flaming.
 				hitResult.getEntity().setRemainingFireTicks(100);

@@ -48,6 +48,7 @@
 | HUDスクリプトに独自の変数を追加 | `HudVariableProvider.EVENT`にリスナーを登録する |
 | 機体の位置・姿勢を外部から直接制御 | `tudursvehiclemod$setExternalMotionController()`でコントローラーを設定(スロットル・操舵・照準も指定可) |
 | 弾のブロック破壊を条件付きで無効にする | `VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE`にリスナーを登録する |
+| 独自の弾・爆発をサーバーのダメージ・爆発の倍率に従わせる | `DamageScaling.hitEntity()`・`DamageScaling.explode()`を使う(「13. そのほかのフック」) |
 | ドローンセンターのパイロットを差し替える | `DroneCenterBlockEntity`の`tudursvehiclemod$createDummyPilot()`をオーバーライド |
 | 体力・燃料・武器の状態を直接設定 | `tudursvehiclemod$setHealth()`・`setFuel()`・`setWeaponStates()`など(「13. そのほかのフック」) |
 | コードで作った形状を命中判定に使う | `ServerObjModelHitboxes.registerGeneratedModel()` |
@@ -834,6 +835,25 @@ VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE.register(projectile -> {
 ```
 
 - サーバー側で呼ばれます。リスナーのうち1つでも`false`を返せば無効になります
+
+### サーバーのダメージ・爆発の倍率に従う
+
+サーバー設定の武器ダメージ倍率・爆風倍率・爆発のブロック破壊倍率(`Readme_cfg.md`)は、
+`entity.DamageScaling`から読めます。独自の弾や爆発を持つアドオンは、これを通すと
+前提MODの武器と同じ設定に従います。
+
+| メソッド | 内容 |
+|---|---|
+| `weaponDamage()` / `explosionBlast()` / `explosionBlock()` | 現在の倍率(0以上)。呼ぶたびに設定を読み直します |
+| `scaleWeaponDamage(float)` | ダメージに武器ダメージ倍率を掛けた値 |
+| `hitEntity(level, target, source, baseDamage, projectile)` | 倍率を掛けたダメージを与えます。倍率で0になった場合、生物はノックバックだけを受けます |
+| `explode(level, source, x, y, z, radius, fire, interaction)` | `Level.explode()`と同じ爆発を、爆風倍率(エンティティへのダメージ)とブロック破壊倍率(ブロックを壊す・火をつける範囲)を掛けて起こします |
+
+```java
+DamageScaling.explode(level, this, x, y, z, 4.0f, false, Level.ExplosionInteraction.TNT);
+```
+
+- サーバー側で呼んでください。前提MODの`VehicleProjectileEntity`を使う弾は、何もしなくても倍率が掛かります
 
 ### ドローンセンターのダミーパイロットを差し替える
 

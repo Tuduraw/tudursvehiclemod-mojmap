@@ -48,6 +48,7 @@ All of the following are genuinely extensible.
 | Add your own variables to HUD scripts | Register a listener with `HudVariableProvider.EVENT` |
 | Control a vehicle's position and attitude directly | Set a controller with `tudursvehiclemod$setExternalMotionController()` (it can give throttle, steering and aim too) |
 | Keep some projectiles from damaging blocks | Register a listener on `VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE` |
+| Make your own projectiles and explosions follow the server's damage and explosion multipliers | Use `DamageScaling.hitEntity()` and `DamageScaling.explode()` ("13. Other hooks") |
 | Replace a Drone Center's pilot | Override `tudursvehiclemod$createDummyPilot()` of `DroneCenterBlockEntity` |
 | Set health, fuel and weapon state directly | `tudursvehiclemod$setHealth()`, `setFuel()`, `setWeaponStates()` and others ("13. Other hooks") |
 | Hit detection for geometry built in code | `ServerObjModelHitboxes.registerGeneratedModel()` |
@@ -844,6 +845,25 @@ VehicleProjectileEvents.ALLOW_BLOCK_DAMAGE.register(projectile -> {
 ```
 
 - Called on the server. One listener returning `false` is enough
+
+### Following the server's damage and explosion multipliers
+
+The server's weapon damage, explosion blast and explosion block destruction multipliers
+(`Readme_cfg.md`) can be read from `entity.DamageScaling`. An addon with its own projectiles or
+explosions that goes through it follows the same settings as the base mod's weapons.
+
+| Method | What it does |
+|---|---|
+| `weaponDamage()` / `explosionBlast()` / `explosionBlock()` | The current multiplier (0 or more), read from the config on each call |
+| `scaleWeaponDamage(float)` | The damage times the weapon damage multiplier |
+| `hitEntity(level, target, source, baseDamage, projectile)` | Deals the damage times the multiplier. When the multiplier brings it to 0, a living target is only knocked back |
+| `explode(level, source, x, y, z, radius, fire, interaction)` | The same explosion as `Level.explode()`, with the blast multiplier (damage to entities) and the block destruction multiplier (how far it breaks blocks and sets fire) applied |
+
+```java
+DamageScaling.explode(level, this, x, y, z, 4.0f, false, Level.ExplosionInteraction.TNT);
+```
+
+- Call these on the server. Projectiles that are the base mod's `VehicleProjectileEntity` get the multipliers without anything extra
 
 ### Replacing a Drone Center's dummy pilot
 

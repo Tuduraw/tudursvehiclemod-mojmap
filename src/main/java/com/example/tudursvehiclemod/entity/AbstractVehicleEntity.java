@@ -4510,7 +4510,8 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		java.util.List<PendingExplosion> toProcess = new java.util.ArrayList<>(PENDING_EXPLOSIONS);
 		PENDING_EXPLOSIONS.clear();
 		for (PendingExplosion pending : toProcess) {
-			pending.world().explode(pending.source(), pending.x(), pending.y(), pending.z(), pending.power(), false,
+			// With the server's blast and block destruction multipliers (DamageScaling).
+			DamageScaling.explode(pending.world(), pending.source(), pending.x(), pending.y(), pending.z(), pending.power(), false,
 					net.minecraft.world.level.Level.ExplosionInteraction.MOB);
 		}
 	}
@@ -9622,7 +9623,9 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			LoadedProjectiles.markVehicleHit(projectile);
 			float damageAmount = tudursvehiclemod$estimateProjectileDamage(projectile);
 			net.minecraft.world.damagesource.DamageSource damageSource = tudursvehiclemod$estimateProjectileDamageSource(projectile, serverWorld);
-			this.hurtServer(serverWorld, damageSource, damageAmount);
+			if (damageAmount > 0f) {
+				this.hurtServer(serverWorld, damageSource, damageAmount);
+			}
 			// A hit registered through this custom
 			// mesh-based path went straight to a plain discard() with no
 			// explosion/effects at all, unlike vanilla's own onEntityHit/
@@ -9792,7 +9795,10 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			return null;
 		}
 		AbstractVehicleEntity vehicle = hit.vehicle();
-		vehicle.hurtServer(world, tudursvehiclemod$estimateProjectileDamageSource(projectile, world), tudursvehiclemod$estimateProjectileDamage(projectile));
+		float damage = tudursvehiclemod$estimateProjectileDamage(projectile);
+		if (damage > 0f) {
+			vehicle.hurtServer(world, tudursvehiclemod$estimateProjectileDamageSource(projectile, world), damage);
+		}
 		return vehicle;
 	}
 
@@ -9805,10 +9811,10 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		return owner != null && owner.getVehicle() == this;
 	}
 
-	/** VehicleProjectileEntity exposes its own base damage directly; other projectile types (vanilla arrows/tridents, whose damage accessor isn't reliably available across mappings) fall back to a velocity-scaled estimate. */
+	/** VehicleProjectileEntity exposes its own base damage directly (times the server's weapon damage multiplier - DamageScaling); other projectile types (vanilla arrows/tridents, whose damage accessor isn't reliably available across mappings) fall back to a velocity-scaled estimate. */
 	private static float tudursvehiclemod$estimateProjectileDamage(net.minecraft.world.entity.projectile.Projectile projectile) {
 		if (projectile instanceof com.example.tudursvehiclemod.entity.projectile.VehicleProjectileEntity vehicleProjectile) {
-			return vehicleProjectile.tudursvehiclemod$getDamage();
+			return DamageScaling.scaleWeaponDamage(vehicleProjectile.tudursvehiclemod$getDamage());
 		}
 		double speed = projectile.getDeltaMovement().length();
 		return (float) net.minecraft.util.Mth.clamp(speed * 6.0, 1.0, 10.0);

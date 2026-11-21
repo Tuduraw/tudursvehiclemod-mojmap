@@ -10,7 +10,8 @@
     "ExplosionKnockbackMixin",
     "RemoteControlLogoutMixin",
     "ProjectileFinalSegmentMixin",
-    "RunwayDeckCollisionMixin"
+    "RunwayDeckCollisionMixin",
+    "ScaledExplosionMixin"
   ],
   "injectors": {
     "defaultRequire": 1

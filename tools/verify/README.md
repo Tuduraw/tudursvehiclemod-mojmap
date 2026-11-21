@@ -88,6 +88,7 @@ LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" \
 | `/tvmtest carriers <名前> <隻数> <tick数> park\|sail` | 空母(滑走路のある艦)の負荷の計測(下記) |
 | `/tvmtest deck <名前>` | 甲板に防具立て・ゾンビ・ボート・豚を落とし、静止位置を記録 |
 | `/tvmtest deckwalk setup\|board\|sail\|report` | クライアントの甲板歩行テスト用(下記) |
+| `/tvmtest dmgscale setup` → `/tvmtest dmgscale <名前>` | ダメージ・爆発の倍率(サーバー設定)を6通りに切り替え、ハスクへの命中・石ブロック上の爆発(威力3)で、体力・ノックバック速度・壊れたブロック数・火の数を記録。setupで(3000, 3000)付近を強制ロードしてから数秒待って実行。終了後は倍率を1に戻す(ファイルには保存しない) |
 
 ## 負荷の計測
 

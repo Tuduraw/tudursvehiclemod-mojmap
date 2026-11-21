@@ -243,6 +243,43 @@ with no restart.
   is released, and those projectiles are removed - without exploding -
   the next time their chunk loads.
 
+
+### Weapon damage multiplier (`weaponDamageMultiplier`) - immediate
+
+- Values on the screen: x0 / x0.25 / x0.5 / x0.75 / x1 / x1.25 / x1.5 /
+  x2 / x3 / x5 / x10 (default: x1). Editing the file directly allows any
+  value of 0 or more.
+- Multiplies the damage this mod's weapons do when a projectile hits an
+  entity or a vehicle (a direct hit). Lets a server tune weapon power as a
+  whole while leaving each weapon file's `Power` as it is.
+- At x0 a hit does no damage. A living target is still knocked back as by
+  the hit (without the red hurt flash or invulnerability time).
+- Explosion damage is set separately, by the explosion blast multiplier
+  below. Crash, collision and drowning damage isn't affected.
+
+### Explosion blast multiplier (`explosionBlastMultiplier`) - immediate
+
+- Values on the screen: the same as the weapon damage multiplier (default: x1)
+- Multiplies the damage explosions from this mod's weapons and destroyed
+  vehicles do to entities and vehicles. How far the blast reaches, how hard
+  it pushes, and how the explosion looks stay the same.
+- At x0 the blast does no damage and only pushes entities away.
+
+### Explosion block destruction multiplier (`explosionBlockMultiplier`) - immediate
+
+- Values on the screen: the same as the weapon damage multiplier (default: x1)
+- Multiplies how far explosions from this mod's weapons and destroyed
+  vehicles break blocks (and set fire), independently of the blast
+  multiplier. For a weapon's explosion it multiplies `ExplosionBlock` (or
+  `Explosion` when that isn't set); for a vehicle's explosion, how far
+  vanilla's explosion reaches into blocks.
+- At x0 no blocks are broken and no fire is set.
+- An explosion that wouldn't break blocks anyway (a weapon with
+  `ExplosionBlock = 0`, a fuel-air explosive, a vehicle's
+  explosion with the `mobGriefing` game rule off) doesn't start breaking
+  them at a higher multiplier. A projectile breaking glass or going through
+  blocks with `Piercing` isn't an explosion and isn't affected.
+
 ---
 
 ## 4. Settings that don't appear on the settings screen

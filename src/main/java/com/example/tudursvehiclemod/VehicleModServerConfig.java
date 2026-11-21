@@ -83,6 +83,15 @@ public final class VehicleModServerConfig {
 	/** Fire Support Center: the largest relative coordinate (blocks, each axis) the center's screen accepts for a target. Defaults to 4096. */
 	public int fireSupportMaxDistance = 4096;
 
+	/** Multiplies the damage this mod's weapons do when a projectile hits an entity or a vehicle (entity.DamageScaling). 1.0 (the default) is the damage each weapon file sets; 0 means no damage - a hit only knocks a living target back. Crash, collision and drowning damage isn't affected. Applies immediately. */
+	public double weaponDamageMultiplier = 1.0;
+
+	/** Multiplies the damage explosions from this mod's weapons and destroyed vehicles do to entities and vehicles (entity.DamageScaling). 1.0 (the default) is unchanged; 0 means no damage - the blast only pushes entities away (like TNT under water, whose blast only shoves). How far the blast reaches stays the same. Applies immediately. */
+	public double explosionBlastMultiplier = 1.0;
+
+	/** Multiplies how far explosions from this mod's weapons and destroyed vehicles break blocks (and set fire), separately from their blast (entity.DamageScaling). 1.0 (the default) is unchanged; 0 means no blocks are broken and no fire is set. Only explosions that would break blocks at all are affected (ExplosionBlock = 0 in the weapon file, the mobGriefing rule). Applies immediately. */
+	public double explosionBlockMultiplier = 1.0;
+
 	/** Exposed so VehicleMod's own startup log can state exactly where this file actually lives - the resolved path isn't necessarily obvious. */
 	public static Path getConfigPath() {
 		return CONFIG_PATH;
