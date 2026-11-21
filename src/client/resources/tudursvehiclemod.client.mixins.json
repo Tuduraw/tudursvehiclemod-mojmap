@@ -12,7 +12,9 @@
     "HeldItemRendererMixin",
     "RenderLayerFactoryInvoker",
     "WorldRendererLightmapMixin",
-    "EntityRendererLightMixin"
+    "EntityRendererLightMixin",
+    "LevelRendererFarVehicleMixin",
+    "GameRendererFarPlaneMixin"
   ],
   "injectors": {
     "defaultRequire": 1

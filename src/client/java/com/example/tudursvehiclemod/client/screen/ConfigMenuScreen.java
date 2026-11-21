@@ -231,6 +231,20 @@ public class ConfigMenuScreen extends Screen {
 				() -> config.disableEntityRenderCulling = !config.disableEntityRenderCulling));
 
 		entries.add(new ConfigEntry(
+				tudursvehiclemod$toggleLabel("gui.tudursvehiclemod.config.render_far_vehicles", config.renderFarVehicles),
+				"gui.tudursvehiclemod.config.render_far_vehicles.tooltip",
+				() -> config.renderFarVehicles = !config.renderFarVehicles));
+
+		entries.add(new ConfigEntry(
+				Component.translatable("gui.tudursvehiclemod.config.far_vehicle_distance", config.farVehicleRenderDistance),
+				"gui.tudursvehiclemod.config.far_vehicle_distance.tooltip",
+				// 512 -> 1024 -> 2048 -> 4096 -> 512; any other value (set in the file) moves on to the next of these above it.
+				() -> config.farVehicleRenderDistance = config.farVehicleRenderDistance >= 4096 ? 512
+						: config.farVehicleRenderDistance >= 2048 ? 4096
+						: config.farVehicleRenderDistance >= 1024 ? 2048
+						: config.farVehicleRenderDistance >= 512 ? 1024 : 512));
+
+		entries.add(new ConfigEntry(
 				tudursvehiclemod$toggleLabel("gui.tudursvehiclemod.config.third_person_hud", config.showHudInThirdPerson),
 				"gui.tudursvehiclemod.config.third_person_hud.tooltip",
 				() -> config.showHudInThirdPerson = !config.showHudInThirdPerson));

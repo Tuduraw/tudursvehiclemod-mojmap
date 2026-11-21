@@ -26,6 +26,12 @@ public final class VehicleModConfig {
 	/** If true, skips ALL of this renderer's own distance/frustum culling checks entirely for this mod's own entities.. */
 	public boolean disableEntityRenderCulling = true;
 
+	/** Draws vehicles beyond the entity range - for use with an LOD mod (Distant Horizons and the like), so that vehicles show over its distant terrain as well (client.farvehicle.FarVehicleProxies). The server has to allow it too (farVehicleSyncEnabled in its own config). Off by default. */
+	public boolean renderFarVehicles = false;
+
+	/** How far (blocks) far vehicles are drawn, when renderFarVehicles is on; the server may cap it lower. */
+	public int farVehicleRenderDistance = 2048;
+
 	/** Whether VehicleHud still draws in third-person view (default true, matching pre-existing behavior); first person is unaffected either way. */
 	public boolean showHudInThirdPerson = true;
 

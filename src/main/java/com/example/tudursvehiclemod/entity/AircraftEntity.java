@@ -3310,6 +3310,8 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 	protected static final float WATER_DITCHING_DAMAGE_PER_SPEED = LANDING_IMPACT_DAMAGE_PER_SPEED * 8.0f;
 	/** Minimum damage fraction a water ditching always costs, regardless of the speed-based formula above. */
 	protected static final float WATER_DITCHING_MIN_DAMAGE_FRACTION = 0.1f;
+	/** How far above a runway's deck (blocks) an aircraft still counts as on it, for landing damage (tudursvehiclemod$checkLandingImpactDamage()). */
+	protected static final double RUNWAY_SKIM_HEIGHT = 0.3;
 	/** So tudursvehiclemod$checkLandingImpactDamage() only fires once, on the actual transition from airborne to grounded/surfaced, rather than re-triggering every tick this aircraft remains on the ground/water. */
 	protected boolean wasGroundedForImpact;
 
@@ -3317,11 +3319,21 @@ public class AircraftEntity extends AbstractVehicleEntity implements FreeCameraV
 		if (!(this.level() instanceof ServerLevel serverWorld)) {
 			return;
 		}
-		boolean groundedNow = this.onGround() || this.isInWater();
+		// On a runway, "grounded" takes in skimming the deck by a little (RUNWAY_SKIM_HEIGHT): an aircraft rolling fast along a deck leaves it by a hair from one tick to the next - the deck heaving under it, the wings carrying nearly all its weight - and each return used to count as a fresh landing, hitting it with landing damage the moment its speed passed LANDING_IMPACT_SPEED_FRACTION of its top speed. Only a real touchdown, from higher up, counts now.
+		AbstractVehicleEntity deck = this.onGround() || this.isInWater() ? null : RunwayDeckCollision.deckUnder(this, RUNWAY_SKIM_HEIGHT);
+		boolean groundedNow = this.onGround() || this.isInWater() || deck != null;
 		boolean justLanded = groundedNow && !this.wasGroundedForImpact;
 		this.wasGroundedForImpact = groundedNow;
 		if (!justLanded) {
 			return;
+		}
+		// Landing on a deck: what counts is the speed relative to the deck, not to the world - a carrier steaming into the wind takes that much off the landing.
+		if (deck == null && this.onGround()) {
+			deck = RunwayDeckCollision.deckUnder(this, RUNWAY_SKIM_HEIGHT);
+		}
+		if (deck != null) {
+			Vec3 own = this.getDeltaMovement();
+			preMoveSpeed = Math.min(preMoveSpeed, own.subtract(deck.getX() - deck.xo, deck.getY() - deck.yo, deck.getZ() - deck.zo).length());
 		}
 		double threshold = this.tudursvehiclemod$getScaledMaxSpeed() * LANDING_IMPACT_SPEED_FRACTION;
 		if (preMoveSpeed < threshold) {

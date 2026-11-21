@@ -1219,6 +1219,19 @@ returns to the normal fixed view while the release key is held.
 
 ---
 
+## Using with LOD mods
+
+LOD mods such as Distant Horizons draw terrain beyond the render
+distance, but the game doesn't show vehicles outside the render distance
+(the range the server sends entities in). Turning on both the client
+setting "Draw far vehicles" (`renderFarVehicles`) and the server setting
+"Far vehicle sync" (`farVehicleSyncEnabled`) shows those vehicles - and projectiles drawn with a model, such as
+missiles and bombs - over the distant terrain as well (both are off by
+default), including vehicles in force-loaded chunks (where CAS/carrier
+aircraft and flying projectiles keep chunks loaded, or another mod does). See `Readme_cfg.md`
+for the details and caveats (they may show through distant terrain, fog
+settings, and so on).
+
 ## Known incompatibilities
 
 - **Lithium**: Lithium's collision optimization

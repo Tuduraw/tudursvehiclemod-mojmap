@@ -32,6 +32,8 @@ public class ModNetworking {
 				ServerPlayNetworking.send(handler.player, DefinitionFingerprintPayload.current());
 			}
 		});
+		// Vehicles beyond the entity range, for clients drawing them over an LOD mod's distant terrain (FarVehicleSync).
+		com.example.tudursvehiclemod.entity.FarVehicleSync.register();
 		// The server settings a client moves vehicles with (VehicleSpeedScaling): on joining, and to everyone whenever they change.
 		PayloadTypeRegistry.playS2C().register(ServerSettingsSyncPayload.ID, ServerSettingsSyncPayload.CODEC);
 		net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->

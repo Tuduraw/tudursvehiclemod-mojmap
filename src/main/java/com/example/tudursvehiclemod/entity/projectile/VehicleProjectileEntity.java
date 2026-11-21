@@ -506,6 +506,9 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 	/** The single choke point every removal funnels through - every discard() call site (onEntityHit/onBlockHit/updateWaterContactExplosion/updateExplosionAltitude/updateTimeFuse/updateImpactFuse), but also a chunk unloading and a dimension change, which never reach remove() (they call setRemoved() directly, which ends here; this used to be a remove() override, so those paths skipped it all). Decrements ACTIVE_COUNT, releases TV control (see tudursvehiclemod$releaseTvControl()'s own doc) and releases this projectile's force-loaded chunks, whatever the reason: a projectile can't be restored from a save (see tudursvehiclemod$discardIfRestoredFromSave()'s own doc), so there's nothing to keep them forced for. Server side only; guarded so it runs once. */
 	@Override
 	public void onRemoval(net.minecraft.world.entity.Entity.RemovalReason reason) {
+		if (this instanceof VehicleModelProjectileEntity modelProjectile) {
+			com.example.tudursvehiclemod.entity.FarVehicleSync.forgetProjectile(modelProjectile);
+		}
 		super.onRemoval(reason);
 		if (this.tudursvehiclemod$removalHandled || !(this.level() instanceof ServerLevel)) {
 			return;
@@ -862,6 +865,9 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 	public void tick() {
 		if (this.tudursvehiclemod$discardIfRestoredFromSave()) {
 			return;
+		}
+		if (this instanceof VehicleModelProjectileEntity modelProjectile && !this.level().isClientSide()) {
+			com.example.tudursvehiclemod.entity.FarVehicleSync.markProjectileTicking(modelProjectile);
 		}
 		// The torpedo's own orientation was
 		// specifically unstable compared to every OTHER projectile type -

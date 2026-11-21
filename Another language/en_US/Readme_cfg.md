@@ -184,6 +184,33 @@ with one setting. Default is `beam`.
 - Skips this renderer's own distance and frustum checks, always drawing a
   vehicle as long as it's loaded.
 
+### Draw far vehicles (`renderFarVehicles`) - immediate
+
+- Default: `false`
+- For use with an LOD mod (Distant Horizons and the like). Draws vehicles
+  (and projectiles drawn with a model - missiles, bombs, shells) beyond the
+  render distance, so they show over the distant terrain the
+  LOD mod draws.
+- Only works when the server (in single player, the world) has "Far
+  vehicle sync" (`farVehicleSyncEnabled`, below) on.
+- Far vehicles are drawn simplified: moving parts (landing gear, turrets,
+  rotors, hatches) at rest, lit as by open sky.
+- Things to know:
+  - Far vehicles aren't hidden by distant terrain, and may show through a
+    mountain: an LOD mod's terrain isn't part of the game's own depth
+    information.
+  - With the game's own fog on, vehicles beyond the render distance are
+    lost in it. Turn vanilla fog off in the LOD mod (Distant Horizons does
+    by default).
+  - While this is on, the game's furthest draw depth (normally four times
+    the render distance) is extended to the distance below.
+
+### Far vehicle distance (`farVehicleRenderDistance`) - immediate
+
+- Values on the screen: 512 / 1024 / 2048 / 4096 (blocks, default: 2048)
+- How far far vehicles are drawn when "Draw far vehicles" is on. If the
+  server's limit (`farVehicleSyncMaxDistance`) is shorter, that applies.
+
 ### Third-person HUD (`showHudInThirdPerson`) - immediate
 
 - Default: `true`
@@ -246,6 +273,40 @@ with no restart.
   is released, and those projectiles are removed - without exploding -
   the next time their chunk loads.
 
+
+### Far vehicle sync (`farVehicleSyncEnabled`) - immediate
+
+- Default: `false`
+- Sends players who have "Draw far vehicles" (a client setting) on the
+  position, heading and motion of vehicles beyond the range entities are
+  sent in (the server's view distance), so they can see them over an LOD
+  mod's distant terrain.
+- It lets players see where far-away vehicles are, so it's off by
+  default. Think twice on a PvP server.
+- Projectiles are sent only if drawn with a model (weapons with
+  `BulletModel`: missiles, bombs, shells); plain bullets are too small to
+  see that far out, and too many. Projectiles move fast and end suddenly,
+  so they're sent more often than vehicles
+  (`farVehicleSyncProjectileIntervalTicks`, default 4 ticks); the most
+  sent to one player is `farVehicleSyncMaxProjectiles` (default 64, 0 for
+  none). Both can only be changed in the file. A projectile that has hit
+  something may be seen going on until the next send (up to 4 ticks by
+  default).
+- Only vehicles and projectiles in chunks the server has loaded count -
+  including force-loaded ones (what flying projectiles, CAS/carrier
+  aircraft and remote-controlled vehicles do by themselves, or another mod
+  does through `ChunkForceTracker` and the like). One where nobody is
+  nearby (and no chunk loader) isn't on the server to be seen.
+- Vehicles are sent up to the shorter of the player's setting and the
+  limit below. How often they're sent (`farVehicleSyncIntervalTicks`,
+  default 10 ticks) and the most sent to one player (`farVehicleSyncMaxCount`,
+  default 64, nearest first) can only be changed in the file. In between,
+  the client moves them on by the motion it was sent.
+
+### Far vehicle sync distance (`farVehicleSyncMaxDistance`) - immediate
+
+- Values on the screen: 512 / 1024 / 2048 / 4096 (blocks, default: 2048)
+- The furthest a vehicle is sent, whatever a player asks for.
 
 ### Vehicle speed multiplier (`vehicleSpeedMultiplier`) - immediate
 

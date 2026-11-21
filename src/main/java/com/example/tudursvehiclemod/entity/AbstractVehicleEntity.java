@@ -2124,6 +2124,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		this.tudursvehiclemod$tryExitRemoteControl();
 		CARRIER_ACTIVE_MOTHERSHIPS.remove(this);
 		RunwayDeckCollision.forget(this);
+		FarVehicleSync.forget(this);
 		this.wakeBowHistory.clear();
 		this.wakeSternHistory.clear();
 		this.wakeSideHistory.clear();
@@ -2248,6 +2249,9 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		tudursvehiclemod$updateCustomHitDetection(getDefinition());
 		if (!getDefinition().runways().isEmpty()) {
 			RunwayDeckCollision.markTicking(this);
+		}
+		if (!this.level().isClientSide()) {
+			FarVehicleSync.markTicking(this);
 		}
 		if (this.level() instanceof ServerLevel contactWorld) {
 			VehicleContacts.tudursvehiclemod$markTicking(this, contactWorld);
@@ -3719,6 +3723,23 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 	}
 
 	/** This class extends Entity directly, so vanilla's own default handleFallDamage() - which unconditionally forwards THIS VEHICLE'S OWN accumulated fallDistance to every passenger the instant it lands - was still active. A player-piloted vehicle rarely accumulates much fallDistance (the pilot controls descent), so this went unnoticed; an unmanned vehicle genuinely falling (or descending uncontrolled) accumulates a large fallDistance that gets forwarded in full on touchdown. Lives in this shared base class, so it applies identically to every vehicle type here (Helicopter, VTOL, etc.), not just one - ordinary landing was never meant to hurt whoever's aboard; this vehicle's own separate durability/damage system remains the intended way it takes damage itself. */
+	/** After its own movement, a vehicle that has ended up a little under a runway's deck (the deck rose under it, a hatch runway sits a little higher, or it was skimming the deck on its wings) is put back on top of it, as a step-up would - see RunwayDeckCollision's class doc. */
+	@Override
+	public void move(net.minecraft.world.entity.MoverType type, Vec3 movement) {
+		super.move(type, movement);
+		if (type == net.minecraft.world.entity.MoverType.SELF && !this.noPhysics) {
+			double deck = RunwayDeckCollision.liftOntoDeck(this);
+			if (!Double.isNaN(deck)) {
+				this.setPos(this.getX(), deck, this.getZ());
+				this.setOnGround(true);
+				Vec3 motion = this.getDeltaMovement();
+				if (motion.y < 0) {
+					this.setDeltaMovement(motion.x, 0, motion.z);
+				}
+			}
+		}
+	}
+
 	@Override
 	public boolean causeFallDamage(double fallDistance, float damagePerDistance, DamageSource damageSource) {
 		return false;
@@ -4521,14 +4542,13 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		}
 	}
 
-	/** Explodes once and ejects every passenger when this vehicle's own health reaches 0, but. */
+	/** Explodes once when this vehicle's health reaches 0, and marks it destroyed. Passengers stay aboard (see below). */
 	private void tudursvehiclemod$onDestroyed(ServerLevel world) {
 		float explosionPower = Mth.clamp(
 				(this.getDefinition().width() + this.getDefinition().height()) * 0.5f, 1.0f, 4.0f);
 		// Per PENDING_EXPLOSIONS' own doc: deferred to next tick rather than created immediately, to break a recursive chain-reaction stack overflow through several clustered vehicles.
 		PENDING_EXPLOSIONS.add(new PendingExplosion(world, this, this.getX(), this.getY(), this.getZ(), explosionPower));
-		// A vehicle WITHOUT enableEjectionSeat now simply leaves every remaining passenger mounted on the wreck, undamaged, until they choose to dismount themselves - no forced dismount (this.removeAllPassengers() is skipped for this case entirely) and no damage at all. A vehicle WITH enableEjectionSeat instead ejects every remaining passenger via tudursvehiclemod$tryEjectSeat() (see that method's own doc for the launch-and-auto-parachute mechanism), which already dealt no damage of its own to begin with. EXCEPT a player actively piloting this aircraft under Carrier control (see AircraftEntity's own carrierPlayerControlled doc), returned safely to their own recorded mothership seat instead, checked FIRST regardless of which of the two paths above would otherwise apply - an already-established safe return takes priority over either. Falls through to the normal handling below if the return itself doesn't succeed (mothership gone, seat already occupied, mount failed for any other reason) - a player left with no vehicle at all is worse than one who's merely ejected/left mounted like usual. Snapshotted into a fresh list first (rather than iterating tudursvehiclemod$getRealPassengerList() directly) since stopRiding() (this method's own eject/mothership-return paths, or the player themselves later) structurally modifies riding state, which could otherwise corrupt iteration if that method's own underlying list ever turned out to be a live view rather than a true copy.
-		boolean hasEjectionSeat = this.getDefinition().enableEjectionSeat();
+		// Every passenger stays aboard the wreck, undamaged, until they get off themselves (the dismount key, or Alt+Space on a vehicle with enableEjectionSeat - tudursvehiclemod$tryEjectSeat()). Destruction used to eject everyone on an ejection-seat vehicle automatically; the seat is the occupant's choice now, as in MC Heli. The exceptions put a player back where they came from instead of leaving them on a wreck: a player piloting this aircraft under Carrier control returns to their mothership seat (AircraftEntity's carrierPlayerControlled), a Midget's crew to its mothership (tudursvehiclemod$tryReturnPlayerOnDestroyed()), a remote controller to their station (tudursvehiclemod$tryExitRemoteControl() below). If such a return fails (mothership gone, seat taken), the player simply stays aboard like everyone else. Snapshotted into a fresh list first since a return calls stopRiding().
 		for (Entity passenger : new java.util.ArrayList<>(this.tudursvehiclemod$getRealPassengerList())) {
 			if (passenger instanceof ServerPlayer player
 					&& this instanceof AircraftEntity aircraft
@@ -4539,15 +4559,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			if (passenger instanceof ServerPlayer player && this.tudursvehiclemod$tryReturnPlayerOnDestroyed(world, player)) {
 				continue;
 			}
-			// The remote controller goes back to their station below (tudursvehiclemod$tryExitRemoteControl()) rather than being ejected at the wreck.
-			if (this.remoteControllerId != null && this.remoteControllerId.equals(passenger.getUUID())) {
-				continue;
-			}
-			if (hasEjectionSeat) {
-				this.tudursvehiclemod$tryEjectSeat(passenger);
-			}
 		}
-		// Per this method's own doc: deliberately no removeAllPassengers() call here anymore at all. A hasEjectionSeat vehicle's own tudursvehiclemod$tryEjectSeat() calls above already dismount each passenger they actually eject - nothing left to remove. A vehicle without an ejection seat leaves every remaining passenger mounted on the wreck, undamaged, until they choose to dismount themselves (per this method's own doc).
 		this.entityData.set(DESTROYED, true);
 		// A destroyed vehicle can no
 		// longer be remote-controlled at all - ends any active session

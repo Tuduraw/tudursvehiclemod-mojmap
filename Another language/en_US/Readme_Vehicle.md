@@ -1098,7 +1098,13 @@ of a carrier (see the end of this section for details).
   this vehicle's own JSON. The whole area joins the game's collision
   checks as a floor, so another vehicle's landing gear and stall
   detection, and players and mobs walking on it, all treat it as if
-  actual blocks were present there. If you want
+  actual blocks were present there. For a vehicle it is a floor that
+  never acts as a ledge or a wall: when a vehicle's underside ends up a
+  little (within 0.6 blocks) below the deck surface - the deck heaving up,
+  rolling onto a slightly higher elevator, or skimming the deck on its
+  wings just before takeoff - it is lifted onto the surface, with no
+  crash damage. A landing on a deck is judged by the speed relative to
+  the deck's own motion. If you want
   several independent runways - multiple decks, an elevator, etc. - use
   the `runways` array (if both `runway` and `runways` are set at once,
   both take effect).
@@ -1216,6 +1222,8 @@ effect at all on an existing vehicle's own behavior.
   pilot themself) all at once. An occupant of a seat with
   `enable_parachuting` enabled is given a parachute; an occupant of a
   seat where it's disabled is simply force-dismounted.
+  Nobody is ejected automatically when the vehicle is destroyed: the
+  occupants stay aboard until they eject or dismount themselves.
 - **Example**: `"enable_ejection_seat": true`
 
 ### `mob_drop_option`

@@ -19,6 +19,10 @@ public class TvmTestClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+		if (System.getProperty("tvmtest.farveh") != null) {
+			ClientTickEvents.END_CLIENT_TICK.register(this::farVehicleTick);
+			return;
+		}
 		if (System.getProperty("tvmtest.speedsync") != null) {
 			ClientTickEvents.END_CLIENT_TICK.register(this::speedSyncTick);
 			return;
@@ -33,6 +37,55 @@ public class TvmTestClient implements ClientModInitializer {
 		ClientTickEvents.END_CLIENT_TICK.register(this::tick);
 	}
 
+	// ------------------------------------------------------------------ far vehicles
+	// -Dtvmtest.farveh=1: turns renderFarVehicles on (fog off, render distance 2 - standing in for an LOD mod), then every 40 ticks logs the far vehicles it has (FarVehicleProxies) and how many vehicle render states were drawn; screenshots at 400 and 600 ticks; quits at 700. /tvmtest farveh <name> on the server places the vehicles.
+	int farTicks;
+
+	void farVehicleTick(MinecraftClient client) {
+		if (client.world == null || client.player == null) {
+			return;
+		}
+		farTicks++;
+		if (farTicks == 1) {
+			com.example.tudursvehiclemod.client.VehicleModClient.getConfig().renderFarVehicles = true;
+			com.example.tudursvehiclemod.client.VehicleModClient.getConfig().farVehicleRenderDistance = 1024;
+			if (System.getProperty("tvmtest.farveh.off") != null) {
+				com.example.tudursvehiclemod.client.VehicleModClient.getConfig().renderFarVehicles = false;
+			}
+			client.options.getViewDistance().setValue(2);
+			if (net.minecraft.client.render.fog.FogRenderer.toggleFog()) {
+				net.minecraft.client.render.fog.FogRenderer.toggleFog();
+			}
+			client.options.hudHidden = true;
+		}
+		if (farTicks % 40 == 0) {
+			var far = com.example.tudursvehiclemod.client.farvehicle.FarVehicleProxies.visible(client.world);
+			StringBuilder sb = new StringBuilder();
+			for (var v : far) {
+				sb.append(v.getType().getUntranslatedName()).append('@').append(Math.round(v.getX())).append(',').append(Math.round(v.getY())).append(',').append(Math.round(v.getZ())).append(' ');
+			}
+			int real = 0;
+			for (var e : client.world.getEntities()) {
+				if (e instanceof com.example.tudursvehiclemod.entity.AbstractVehicleEntity) real++;
+			}
+			var farProjectiles = com.example.tudursvehiclemod.client.farvehicle.FarVehicleProxies.visibleProjectiles(client.world);
+			for (var p : farProjectiles) {
+				sb.append("projectile@").append(Math.round(p.getX())).append(',').append(Math.round(p.getY())).append(',').append(Math.round(p.getZ())).append(' ');
+			}
+			TvmTest.LOG.info("[tvmtest] FARVEH tick={} proxies={} projectiles={} realVehicles={} player={},{},{} far=[{}]", farTicks, far.size(), farProjectiles.size(), real,
+					Math.round(client.player.getX()), Math.round(client.player.getY()), Math.round(client.player.getZ()), sb);
+		}
+		if (farTicks == 400 || farTicks == 600 || farTicks == 615) {
+			client.player.setYaw(-90f);
+			client.player.setPitch(-5f);
+			net.minecraft.client.util.ScreenshotRecorder.saveScreenshot(client.runDirectory, "farveh-" + farTicks + ".png", client.getFramebuffer(), 1,
+					text -> TvmTest.LOG.info("[tvmtest] FARVEH screenshot {}", text.getString()));
+		}
+		if (farTicks >= 700) {
+			client.scheduleStop();
+		}
+	}
+
 	// ------------------------------------------------------------------ speed sync
 	// -Dtvmtest.speedsync=1: logs the vehicle speed multiplier this client uses (entity.VehicleSpeedScaling) every 100 ticks in a world, for 600 ticks, then quits - change it on the server meanwhile (/tvmtest setspeed <x>) to see it follow.
 	int speedSyncTicks;
@@ -44,13 +97,17 @@ public class TvmTestClient implements ClientModInitializer {
 			return;
 		}
 		speedSyncTicks++;
+		if (client.player.isDead()) {
+			client.player.requestRespawn();
+			return;
+		}
 		if (speedSyncTicks == 1 && client.player.getVehicle() != null) {
 			// Still seated from the last session: not one /tvmtest speeddrive gave us.
 			driveDoneVehicle = client.player.getVehicle().getId();
 		}
 		if (speedSyncTicks % 100 == 0) {
-			TvmTest.LOG.info("[tvmtest] SPEEDSYNC tick={} multiplier={}", speedSyncTicks,
-					com.example.tudursvehiclemod.entity.VehicleSpeedScaling.multiplier(client.world));
+			TvmTest.LOG.info("[tvmtest] SPEEDSYNC tick={} multiplier={} vehicle={} driveTicks={} done={}", speedSyncTicks,
+					com.example.tudursvehiclemod.entity.VehicleSpeedScaling.multiplier(client.world), client.player.getVehicle(), driveTicks, driveDoneVehicle);
 		}
 		// Once seated in a vehicle (/tvmtest speeddrive <name> on the server): full forward for 200 ticks, peak speed as this client moves it.
 		if (client.player.getVehicle() instanceof com.example.tudursvehiclemod.entity.AbstractVehicleEntity vehicle && vehicle.getId() != driveDoneVehicle) {

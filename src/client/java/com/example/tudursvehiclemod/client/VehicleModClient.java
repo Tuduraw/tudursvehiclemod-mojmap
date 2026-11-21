@@ -1060,6 +1060,9 @@ public class VehicleModClient implements ClientModInitializer {
 							}
 						}));
 
+		// Vehicles beyond the entity range, over an LOD mod's distant terrain (renderFarVehicles).
+		com.example.tudursvehiclemod.client.farvehicle.FarVehicleProxies.register();
+
 		// The server's vehicle speed multipliers, so this client moves vehicles at the same speeds the server does.
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
 				com.example.tudursvehiclemod.network.ServerSettingsSyncPayload.ID, (payload, context) ->

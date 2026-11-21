@@ -57,4 +57,11 @@ public class VehicleModelProjectileEntity extends VehicleProjectileEntity {
 	public float getBulletScale() {
 		return this.entityData.get(BULLET_SCALE);
 	}
+
+	/** Sets the model, texture and scale it is drawn with - for a stand-in made on a client (client.farvehicle.FarVehicleProxies), which has no weapon to take them from. */
+	public void tudursvehiclemod$setBulletAppearance(Identifier model, Identifier texture, float scale) {
+		this.entityData.set(BULLET_MODEL, model == null ? "" : model.toString());
+		this.entityData.set(BULLET_TEXTURE, texture == null ? "" : texture.toString());
+		this.entityData.set(BULLET_SCALE, scale);
+	}
 }

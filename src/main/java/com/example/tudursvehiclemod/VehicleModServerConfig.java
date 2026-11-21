@@ -83,6 +83,24 @@ public final class VehicleModServerConfig {
 	/** Fire Support Center: the largest relative coordinate (blocks, each axis) the center's screen accepts for a target. Defaults to 4096. */
 	public int fireSupportMaxDistance = 4096;
 
+	/** Tells players about vehicles beyond the range the game sends entities in, so that clients with an LOD mod (and renderFarVehicles on) can draw them over its distant terrain (entity.FarVehicleSync). Off by default: it lets players see where far-away vehicles are. */
+	public boolean farVehicleSyncEnabled = false;
+
+	/** The furthest (blocks) a vehicle is told about, whatever a client asks for. */
+	public int farVehicleSyncMaxDistance = 2048;
+
+	/** How often (ticks) each player is sent the far vehicles; the client moves them on smoothly in between. */
+	public int farVehicleSyncIntervalTicks = 10;
+
+	/** The most far vehicles sent to one player at a time - the nearest ones. */
+	public int farVehicleSyncMaxCount = 64;
+
+	/** The most far projectiles (missiles, bombs, shells - those drawn with a model, bullet_model; plain bullets aren't sent) sent to one player at a time, nearest first, with far vehicle sync on; 0 for none. */
+	public int farVehicleSyncMaxProjectiles = 64;
+
+	/** How often (ticks) each player is sent the far projectiles - more often than vehicles, as they move fast and end suddenly. */
+	public int farVehicleSyncProjectileIntervalTicks = 4;
+
 	/** Multiplies every vehicle's top speed (entity.VehicleSpeedScaling): max_speed, and the other speeds a vehicle gives in absolute terms (SweepWingSpeed, dive_max_speed, a catapult launch's speed boost). Acceleration, turning and the rest of a vehicle's handling stay as defined. 1.0 (the default) is unchanged; values under 0.05 are used as 0.05. Applies immediately, and is sent to players' clients (which move vehicles too). */
 	public double vehicleSpeedMultiplier = 1.0;
 

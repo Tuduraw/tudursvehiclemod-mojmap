@@ -96,6 +96,9 @@ public class TvmTest implements ModInitializer {
 		ServerTickEvents.END_SERVER_TICK.register(this::tick);
 		ServerTickEvents.END_SERVER_TICK.register(srv -> deckServerTick());
 		ServerTickEvents.END_SERVER_TICK.register(srv -> SpeedTest.tick());
+		ServerTickEvents.END_SERVER_TICK.register(srv -> DestroyRideTest.tick());
+		ServerTickEvents.END_SERVER_TICK.register(srv -> TakeoffTest.tick());
+		ServerTickEvents.END_SERVER_TICK.register(srv -> FarVehicleTest.tick());
 		CommandRegistrationCallback.EVENT.register((dispatcher, access, env) -> dispatcher.register(
 				CommandManager.literal("tvmtest").requires(src -> true)
 						.then(CommandManager.literal("run").then(CommandManager.argument("name", StringArgumentType.word())
@@ -140,6 +143,18 @@ public class TvmTest implements ModInitializer {
 									java.util.Map<String, Double> map = com.example.tudursvehiclemod.VehicleModServerConfig.get().vehicleSpeedMultiplierByType;
 									if (value <= 0) map.remove(type); else map.put(type, value);
 									LOG.info("[tvmtest] SETSPEEDTYPE {}", map); return 1; }))))
+						.then(CommandManager.literal("destroyride").then(CommandManager.argument("player", StringArgumentType.word()).then(CommandManager.argument("vehicle", StringArgumentType.string())
+								.then(CommandManager.argument("height", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 300))
+								.executes(ctx -> { DestroyRideTest.start(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "player"), StringArgumentType.getString(ctx, "vehicle"),
+										com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "height")); return 1; })))))
+						.then(CommandManager.literal("takeoff").then(CommandManager.argument("player", StringArgumentType.word()).then(CommandManager.argument("ship", StringArgumentType.string()).then(CommandManager.argument("aircraft", StringArgumentType.string())
+								.executes(ctx -> { TakeoffTest.start(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "player"), StringArgumentType.getString(ctx, "ship"), StringArgumentType.getString(ctx, "aircraft"), false); return 1; })
+								.then(CommandManager.literal("sail")
+								.executes(ctx -> { TakeoffTest.start(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "player"), StringArgumentType.getString(ctx, "ship"), StringArgumentType.getString(ctx, "aircraft"), true); return 1; }))))))
+						.then(CommandManager.literal("takeoffx").then(CommandManager.argument("x", com.mojang.brigadier.arguments.DoubleArgumentType.doubleArg())
+								.executes(ctx -> { System.setProperty("tvmtest.takeoffx", Double.toString(com.mojang.brigadier.arguments.DoubleArgumentType.getDouble(ctx, "x"))); return 1; })))
+						.then(CommandManager.literal("farveh").then(CommandManager.argument("player", StringArgumentType.word())
+								.executes(ctx -> { FarVehicleTest.start(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "player")); return 1; })))
 						.then(CommandManager.literal("dmgscale").then(CommandManager.argument("name", StringArgumentType.word())
 								.executes(ctx -> { String n = StringArgumentType.getString(ctx, "name");
 									if (n.equals("setup")) DmgScaleTest.setup(ctx.getSource().getWorld()); else DmgScaleTest.run(ctx.getSource().getWorld(), n); return 1; })))

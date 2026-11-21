@@ -15,7 +15,9 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 
 /** The solid surface of every runway, given straight to the game's collision lookup (Level.getEntityCollisions(), see mixin.RunwayDeckCollisionMixin) instead of being made of invisible entities.
  *
- * <p>The boxes are the ones the runway tiles (CarrierRunwayPlatformEntity) used to be: the same grid, the same size, one block deep under the runway's surface. Only the few under the box being asked about are made, each time it is asked, from the vehicle's position and yaw at that moment - on the server from its own, on a client from what it shows (as the tiles' client-side placement already did). So nothing has to be spawned, ticked, synced, saved or kept in step with the vehicle, and nothing is missing while a chunk's entities load. */
+ * <p>The boxes are the ones the runway tiles (CarrierRunwayPlatformEntity) used to be: the same grid, the same size, one block deep under the runway's surface. Only the few under the box being asked about are made, each time it is asked, from the vehicle's position and yaw at that moment - on the server from its own, on a client from what it shows (as the tiles' client-side placement already did). So nothing has to be spawned, ticked, synced, saved or kept in step with the vehicle, and nothing is missing while a chunk's entities load.
+ *
+ * <p><b>A runway is a floor, never a wall, for a vehicle on it.</b> A vehicle has no step-up of its own (Entity.maxUpStep() is 0 for anything that isn't a LivingEntity), so any edge of a deck box a little above its underside stopped it dead and set horizontalCollision - which an aircraft takes as flying into a wall (AircraftEntity.tudursvehiclemod$checkBlockCrashDamage()). That happened whenever its underside was even slightly below a deck's surface: the deck heaving up under it, a hatch runway set a little higher than the deck around it, or simply rolling fast enough for the wings to carry nearly all its weight, so that it skimmed the deck without pressing on it and so never stood on it. For a vehicle whose underside is within DECK_STEP below a deck's surface, that deck's boxes are cut down to the height it is at (collect()) - it rests where it is and nothing stands in front of it - and the vehicle is put back on the surface right after it moves (liftOntoDeck(), from AbstractVehicleEntity.move()). Further below the surface than that (flying into the deck's edge from the side, a boat alongside), the deck is solid as before. */
 public final class RunwayDeckCollision {
 
 	private RunwayDeckCollision() {
@@ -61,11 +63,19 @@ public final class RunwayDeckCollision {
 			if (entity != null && (entity == vehicle || entity.isSpectator() || vehicle.hasPassenger(entity))) {
 				continue;
 			}
-			collectFor(vehicle, box, shapes);
+			collectFor(vehicle, box, shapes, deckBottomOf(entity));
 		}
 	}
 
-	private static void collectFor(AbstractVehicleEntity vehicle, AABB box, List<VoxelShape> shapes) {
+	/** How far below a deck's surface a vehicle's underside may be and still be taken as on that deck (see the class doc): about a step. */
+	public static final double DECK_STEP = 0.6;
+
+	/** For a vehicle asking, the height of its underside (the boxes of a deck it is within DECK_STEP under are cut down to it); NaN for anything else (players and mobs have vanilla's step-up, and get the boxes as they are). */
+	private static double deckBottomOf(Entity entity) {
+		return entity instanceof AbstractVehicleEntity ? entity.getBoundingBox().minY : Double.NaN;
+	}
+
+	private static void collectFor(AbstractVehicleEntity vehicle, AABB box, List<VoxelShape> shapes, double riderBottom) {
 		if (vehicle.tudursvehiclemod$isDestroyed()) {
 			return;
 		}
@@ -100,7 +110,9 @@ public final class RunwayDeckCollision {
 			}
 			RunwayDefinition runway = baseRunway.tudursvehiclemod$withHatchProgress(vehicle.tudursvehiclemod$getRunwayHatchProgress(runwayIndex));
 			double surfaceY = vehicle.getY() + runway.heightY();
-			if (box.minY >= surfaceY || box.maxY <= surfaceY - TILE_HEIGHT) {
+			// A vehicle a little under this deck's surface stands on it where it is (see the class doc): its boxes reach up to its underside, not above.
+			double topY = riderBottom < surfaceY && riderBottom >= surfaceY - DECK_STEP ? riderBottom : surfaceY;
+			if (box.minY >= topY || box.maxY <= surfaceY - TILE_HEIGHT) {
 				continue;
 			}
 			float tileSize = AbstractVehicleEntity.tudursvehiclemod$runwayTileSize(runway.width());
@@ -139,10 +151,63 @@ public final class RunwayDeckCollision {
 					if (worldX + half <= box.minX || worldX - half >= box.maxX || worldZ + half <= box.minZ || worldZ - half >= box.maxZ) {
 						continue;
 					}
-					shapes.add(Shapes.create(worldX - half, surfaceY - TILE_HEIGHT, worldZ - half, worldX + half, surfaceY, worldZ + half));
+					shapes.add(Shapes.create(worldX - half, surfaceY - TILE_HEIGHT, worldZ - half, worldX + half, topY, worldZ + half));
 				}
 			}
 		}
+	}
+
+	/** The surface of the highest deck under entity's footprint whose surface is above its underside by no more than DECK_STEP - where to put it back after it moves (AbstractVehicleEntity.move()); NaN when it isn't sunk into any deck. */
+	public static double liftOntoDeck(Entity entity) {
+		Set<AbstractVehicleEntity> vehicles = RUNWAY_VEHICLES.get(entity.level());
+		if (vehicles == null || vehicles.isEmpty()) {
+			return Double.NaN;
+		}
+		AABB own = entity.getBoundingBox();
+		double bottom = own.minY;
+		AABB probe = new AABB(own.minX, bottom, own.minZ, own.maxX, bottom + DECK_STEP, own.maxZ);
+		List<VoxelShape> found = new ArrayList<>();
+		for (AbstractVehicleEntity vehicle : vehicles) {
+			if (vehicle == entity || vehicle.isRemoved() || vehicle.hasPassenger(entity) || entity.hasPassenger(vehicle)) {
+				continue;
+			}
+			// The deck boxes as they are (full height), not cut down for this vehicle.
+			collectFor(vehicle, probe, found, Double.NaN);
+		}
+		double best = Double.NaN;
+		for (VoxelShape shape : found) {
+			double top = shape.max(net.minecraft.core.Direction.Axis.Y);
+			if (top > bottom + 1.0E-6 && top <= bottom + DECK_STEP && !(top <= best)) {
+				best = top;
+			}
+		}
+		return best;
+	}
+
+	/** The vehicle whose runway entity is resting on or skimming - its underside no more than above over a deck's surface, or under it by no more than DECK_STEP - or null. For telling a vehicle rolling along a deck (which may leave the deck by a hair from one tick to the next, when the deck heaves or the wings carry it) from one landing on it (AircraftEntity.tudursvehiclemod$checkLandingImpactDamage()). */
+	public static AbstractVehicleEntity deckUnder(Entity entity, double above) {
+		Set<AbstractVehicleEntity> vehicles = RUNWAY_VEHICLES.get(entity.level());
+		if (vehicles == null || vehicles.isEmpty()) {
+			return null;
+		}
+		AABB own = entity.getBoundingBox();
+		double bottom = own.minY;
+		AABB probe = new AABB(own.minX, bottom - above, own.minZ, own.maxX, bottom + DECK_STEP, own.maxZ);
+		List<VoxelShape> found = new ArrayList<>();
+		for (AbstractVehicleEntity vehicle : vehicles) {
+			if (vehicle == entity || vehicle.isRemoved() || vehicle.hasPassenger(entity) || entity.hasPassenger(vehicle)) {
+				continue;
+			}
+			found.clear();
+			collectFor(vehicle, probe, found, Double.NaN);
+			for (VoxelShape shape : found) {
+				double top = shape.max(net.minecraft.core.Direction.Axis.Y);
+				if (top >= bottom - above && top <= bottom + DECK_STEP) {
+					return vehicle;
+				}
+			}
+		}
+		return null;
 	}
 
 	/** How deep under the surface the boxes reach - the tiles' height. */

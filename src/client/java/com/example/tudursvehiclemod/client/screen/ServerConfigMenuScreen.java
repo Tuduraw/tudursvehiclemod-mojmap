@@ -147,6 +147,20 @@ public class ServerConfigMenuScreen extends Screen {
 				}));
 
 		entries.add(new ConfigEntry(
+				Component.translatable("gui.tudursvehiclemod.server_config.far_vehicle_sync",
+						Component.translatable(config.farVehicleSyncEnabled ? "options.on" : "options.off")),
+				"gui.tudursvehiclemod.server_config.far_vehicle_sync.tooltip",
+				() -> config.farVehicleSyncEnabled = !config.farVehicleSyncEnabled));
+
+		entries.add(new ConfigEntry(
+				Component.translatable("gui.tudursvehiclemod.server_config.far_vehicle_sync_distance", config.farVehicleSyncMaxDistance),
+				"gui.tudursvehiclemod.server_config.far_vehicle_sync_distance.tooltip",
+				() -> config.farVehicleSyncMaxDistance = config.farVehicleSyncMaxDistance >= 4096 ? 512
+						: config.farVehicleSyncMaxDistance >= 2048 ? 4096
+						: config.farVehicleSyncMaxDistance >= 1024 ? 2048
+						: config.farVehicleSyncMaxDistance >= 512 ? 1024 : 512));
+
+		entries.add(new ConfigEntry(
 				tudursvehiclemod$multiplierLabel("gui.tudursvehiclemod.server_config.vehicle_speed_multiplier", config.vehicleSpeedMultiplier),
 				"gui.tudursvehiclemod.server_config.vehicle_speed_multiplier.tooltip",
 				() -> config.vehicleSpeedMultiplier = tudursvehiclemod$nextSpeedMultiplier(config.vehicleSpeedMultiplier)));
