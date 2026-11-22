@@ -24,7 +24,7 @@ import org.joml.Quaternionf;
  *
  * <p>Each one the server reports is a stand-in: a vehicle entity of the same type and definition, made on this client but never added to the world, so it doesn't tick, collide or make a sound - it is only drawn (mixin.LevelRendererFarVehicleMixin), at the place, heading and attitude last reported, carried on smoothly between reports by the motion that came with them. It goes away as soon as the real vehicle comes into entity range (the real one is drawn instead), or when the server stops reporting it.
  *
- * <p>Its moving parts are drawn as the server last reported them (entity.FarVehiclePose): landing gear, hatches, canopies, weapon bays and folding wings at their reported progress, turrets at their reported aim (both eased towards each report), propellers and rotors turning at the reported rate, and a wreck as a wreck. What only the client works out for a vehicle near it (wheel and track turning, recoil, wakes, search light beams, smoke) isn't drawn. It is lit as by open sky.
+ * <p>Its moving parts are drawn as the server last reported them (entity.FarVehiclePose): landing gear, hatches, canopies, weapon bays and folding wings at their reported progress, turrets at their reported aim (both eased towards each report), propellers and rotors turning at the reported rate, and a wreck as a wreck. What only the client works out for a vehicle near it (wheel and track turning, recoil, wakes, search light beams, smoke) isn't drawn. Its engine sound plays (client.sound.VehicleEngineSoundManager), as do its weapons' fire sounds (sent to far listeners by entity.FarVehicleSync.farListeners()). It is lit as by open sky.
  *
  * <p>Projectiles drawn with a model (missiles, bombs, shells) get stand-ins the same way, carried on between reports by their motion and gravity. One that has hit something goes on for up to one report interval (4 ticks by default) before the next report drops it. */
 public final class FarVehicleProxies {
@@ -80,6 +80,15 @@ public final class FarVehicleProxies {
 				context.client().execute(() -> onSnapshot(context.client(), payload)));
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(FarVehicleProxies::reset));
 		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(FarVehicleProxies::onEndClientTick);
+		// A far vehicle coming into entity range: the real one carries on with the parts as its stand-in had them (AbstractVehicleEntity.tudursvehiclemod$setPendingFarPartsSource()).
+		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents.ENTITY_LOAD.register((entity, level) -> {
+			if (entity instanceof AbstractVehicleEntity vehicle && level == proxyLevel) {
+				Proxy proxy = PROXIES.get(vehicle.getId());
+				if (proxy != null) {
+					vehicle.tudursvehiclemod$setPendingFarPartsSource(proxy.entity);
+				}
+			}
+		});
 	}
 
 	private static void reset() {
@@ -113,6 +122,20 @@ public final class FarVehicleProxies {
 			}
 		}
 		return list;
+	}
+
+	/** The same as visible(), by the vehicle's entity id on the server (for its engine sound - client.sound.VehicleEngineSoundManager). */
+	public static Map<Integer, AbstractVehicleEntity> visibleById(ClientLevel level) {
+		if (level != proxyLevel || PROXIES.isEmpty()) {
+			return Map.of();
+		}
+		Map<Integer, AbstractVehicleEntity> map = new HashMap<>();
+		for (Map.Entry<Integer, Proxy> entry : PROXIES.entrySet()) {
+			if (level.getEntity(entry.getKey()) == null) {
+				map.put(entry.getKey(), entry.getValue().entity);
+			}
+		}
+		return map;
 	}
 
 	/** The projectile stand-ins to draw this frame (only those whose real projectile isn't in this client's world). */

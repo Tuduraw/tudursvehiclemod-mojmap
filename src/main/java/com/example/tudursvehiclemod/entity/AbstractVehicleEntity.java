@@ -2279,15 +2279,29 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		if (motionController == null || !motionController.tudursvehiclemod$tickMotion(this)) {
 			updateVehicleMovement(getDefinition());
 		}
-		// Before anything reads the runway positions this tick (the deck carry, RunwayDeckCollision).
+		// Before anything reads the runway positions this tick (the deck carry, RunwayDeckCollision). A vehicle just appeared on a client (see below) takes its hatches' state at once.
+		this.snapPartsThisTick = this.level().isClientSide() && !this.clientPartsSettled;
 		updateRunwayHatchProgress();
+		this.snapPartsThisTick = false;
 		if (!this.level().isClientSide()) {
 			tudursvehiclemod$handleWeightTypeMobCollision(getDefinition());
 			tudursvehiclemod$handleWeightTypeBlockBreaking(getDefinition());
 		}
+		// On a client, a vehicle that has just appeared (come into entity range, its chunk loaded, joined) takes its parts' current state at once instead of moving them there from their resting positions (tudursvehiclemod$settleClientParts()).
+		boolean settleParts = this.level().isClientSide() && !this.clientPartsSettled;
+		if (settleParts) {
+			this.clientPartsSettled = true;
+			this.snapPartsThisTick = !this.tudursvehiclemod$adoptPendingFarParts();
+		}
 		updateLandingGear();
 		updateToggleParts();
 		updateSpinningParts();
+		if (settleParts) {
+			this.snapPartsThisTick = false;
+			this.prevLandingGearProgress = this.landingGearProgress;
+			this.prevTogglePartProgress.putAll(this.togglePartProgress);
+			this.prevRunwayHatchProgress.putAll(this.runwayHatchProgress);
+		}
 		tudursvehiclemod$updateWeaponPartSpin(getDefinition());
 		tudursvehiclemod$updateWeaponPartRecoil();
 		tudursvehiclemod$updateWeaponPartAimSpeed(getDefinition());
@@ -2389,7 +2403,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		}
 		this.wasGroundedForGear = grounded;
 		float target = this.entityData.get(GEAR_DEPLOYED) ? 0f : 1f;
-		float step = LANDING_GEAR_SPEED / 90f; // LANDING_GEAR_SPEED is degrees-equivalent; progress is 0..1
+		float step = this.snapPartsThisTick ? 1f : LANDING_GEAR_SPEED / 90f; // LANDING_GEAR_SPEED is degrees-equivalent; progress is 0..1
 		if (this.landingGearProgress < target) {
 			this.landingGearProgress = Math.min(target, this.landingGearProgress + step);
 		} else if (this.landingGearProgress > target) {
@@ -2524,7 +2538,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			} else {
 				speedMultiplier = 1.0f;
 			}
-			float maxStep = "slide".equals(part.mode())
+			float maxStep = this.snapPartsThisTick ? 1f : "slide".equals(part.mode())
 					? part.speed() * speedMultiplier / 20f // speed is blocks/sec-ish; step per tick
 					: part.speed() * speedMultiplier / 90f; // speed is degrees/tick-equivalent; progress is 0..1 over max_angle
 			float current = previous;
@@ -2546,7 +2560,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			this.prevRunwayHatchProgress.put(runwayIndex, previous);
 			float target = this.isHatchOpen() ? 1f : 0f;
 			// This project's own hatch-type TogglePart convention (the "$hatch" name prefix - see updateToggleParts()'s own speedMultiplier doc) moves at DOUBLE its own configured speed value - applied here unconditionally too (rather than reading any specific TogglePart's own name, which RunwayDefinition's own hatch fields are deliberately decoupled from - see that record's own doc) per direct confirmation this is only ever combined with hatch-type parts in practice, never canopy-type. Without this, entering the same numeric speed value on both produced a visibly slower runway than its own matching hatch.
-			float maxStep = (float) runway.hatchMoveSpeed() * 2f / 20f;
+			float maxStep = this.snapPartsThisTick ? 1f : (float) runway.hatchMoveSpeed() * 2f / 20f;
 			float current = previous;
 			if (current < target) {
 				current = Math.min(target, current + maxStep);
@@ -2594,7 +2608,86 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			angles[i * 4 + 3] = FarVehiclePose.encodeAngle(this.weaponPartParentCurrentPitch.get(name));
 		}
 		float spin = this.tudursvehiclemod$isDestroyed() || def.spinningParts().isEmpty() ? 0f : this.getSpinningPartSpeedMultiplier();
-		return new FarVehiclePose(this.tudursvehiclemod$isDestroyed(), Float.isFinite(spin) ? spin : 0f, toggle, angles);
+		float engine = this.tudursvehiclemod$getEngineSoundThrottle();
+		return new FarVehiclePose(this.tudursvehiclemod$isDestroyed(), Float.isFinite(spin) ? spin : 0f, Float.isFinite(engine) ? engine : 0f, toggle, angles);
+	}
+
+	/** How hard this vehicle's engine is working (0-1), for its engine sound's loudness and pitch (client.sound.VehicleEngineSoundManager): its throttle, or what stands in for it while an autopilot or a Drone Center flies it, or a rotor's spin. Works on either side; a far vehicle's stand-in on a client has the server's value (FarVehiclePose). */
+	public float tudursvehiclemod$getEngineSoundThrottle() {
+		if (this.farPoseTarget != null) {
+			return Mth.clamp(this.farPoseTarget.engine(), 0f, 1f);
+		}
+		boolean rotorAlwaysSpinning = this instanceof HelicopterEntity
+				|| (this instanceof VtolEntity vtol && vtol.isHelicopterMode());
+		if (this.tudursvehiclemod$isUsingRampedAutopilotThrottle()) {
+			return Mth.clamp(this.tudursvehiclemod$getCasWaypointSpeedFraction(), 0f, 1f);
+		}
+		if (this.tudursvehiclemod$isDroneActive()) {
+			return Mth.clamp(this.tudursvehiclemod$getDroneSpeedFraction(), 0f, 1f);
+		}
+		if (rotorAlwaysSpinning) {
+			float rotorFraction = Mth.clamp(this.tudursvehiclemod$getSpinningPartSpeedMultiplier(), 0f, 1f);
+			if (this.getControllingPassenger() instanceof net.minecraft.world.entity.player.Player) {
+				// Helicopter's own getThrottle() is -1.1 (0=hover), so (x+1)/2 maps it into the 0.1 fraction this calculation wants. VtolEntity's own hover-mode getThrottle() is ALREADY 0.1 (0.5=hover) - using it directly, with no transform at all, is what's actually correct for that convention.
+				float throttleFraction = this instanceof HelicopterEntity
+						? (Mth.clamp(this.getThrottle(), -1f, 1f) + 1f) / 2f
+						: Mth.clamp(this.getThrottle(), 0f, 1f);
+				// Averaged with the value driving the visible rotor spin, so the sound always matches the rotor.
+				return (throttleFraction + rotorFraction) / 2f;
+			}
+			// Unmanned: the rotor's spin alone, which reaches exactly 0 once landed and stopped (getThrottle() keeps its last flown value, which (x+1)/2 would read as half power forever).
+			return rotorFraction;
+		}
+		return Mth.clamp(Math.abs(this.getThrottle()), 0f, 1f);
+	}
+
+	/** Client side: whether this vehicle has had its first tick, in which its parts take their current state at once (see tick()). Their progress isn't synced - each side works it out from the synced targets (gear down, hatch open...) - so without this, a vehicle coming into entity range would be seen moving its gear, hatches and the like from their resting positions to where they already are. */
+	private boolean clientPartsSettled;
+	/** True while the part updates run in that first tick: each part goes straight to its target. */
+	private boolean snapPartsThisTick;
+	/** Client side: the far vehicle stand-in (client.farvehicle.FarVehicleProxies) this vehicle was drawn as until it came into entity range - its parts are taken from it in this vehicle's first tick (tudursvehiclemod$adoptPendingFarParts()), so they carry on from where they were drawn. */
+	private AbstractVehicleEntity pendingFarPartsSource;
+
+	/** Client side, for a vehicle that has just come into entity range: the stand-in it was drawn as (FarVehicleProxies). Called when it is added to the client's world - before its data has arrived, so the stand-in is only checked against it in its first tick. */
+	public void tudursvehiclemod$setPendingFarPartsSource(AbstractVehicleEntity standIn) {
+		if (!this.clientPartsSettled) {
+			this.pendingFarPartsSource = standIn;
+		}
+	}
+
+	/** In this vehicle's first client tick: takes its parts' state from the stand-in it was drawn as, if it was one of the same vehicle type (landing gear, toggle parts, turret aim, spinning parts). Returns whether it did. */
+	private boolean tudursvehiclemod$adoptPendingFarParts() {
+		AbstractVehicleEntity source = this.pendingFarPartsSource;
+		this.pendingFarPartsSource = null;
+		if (source == null || source.getVehicleDefinitionId() == null || !source.getVehicleDefinitionId().equals(this.getVehicleDefinitionId())) {
+			return false;
+		}
+		this.togglePartProgress.putAll(source.togglePartProgress);
+		this.weaponPartCurrentYaw.clear();
+		this.weaponPartCurrentYaw.putAll(source.weaponPartCurrentYaw);
+		this.weaponPartCurrentPitch.clear();
+		this.weaponPartCurrentPitch.putAll(source.weaponPartCurrentPitch);
+		this.weaponPartParentCurrentYaw.clear();
+		this.weaponPartParentCurrentYaw.putAll(source.weaponPartParentCurrentYaw);
+		this.weaponPartParentCurrentPitch.clear();
+		this.weaponPartParentCurrentPitch.putAll(source.weaponPartParentCurrentPitch);
+		this.spinningPartsPhase.putAll(source.spinningPartsPhase);
+		// The stand-in has no gear progress of its own - its landing gear parts follow it directly (updateToggleParts()), so they tell it. Without one, the gear goes straight to its target.
+		VehicleDefinition def = this.getDefinition();
+		boolean gearFound = false;
+		if (def != null) {
+			for (TogglePart part : def.toggleParts()) {
+				if ("landing_gear".equals(part.trigger()) || "landing_gear_reversed".equals(part.trigger())) {
+					this.landingGearProgress = source.togglePartProgress.getOrDefault(part.part(), this.landingGearProgress);
+					gearFound = true;
+					break;
+				}
+			}
+		}
+		if (!gearFound) {
+			this.landingGearProgress = this.entityData.get(GEAR_DEPLOYED) ? 0f : 1f;
+		}
+		return true;
 	}
 
 	/** The last pose reported for this far vehicle's stand-in (tudursvehiclemod$setFarPose()); null on a real vehicle. */
@@ -6567,9 +6660,17 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 				new com.example.tudursvehiclemod.network.WeaponFireSoundPayload(
 						weapon.sound().get(), spawnPos.x, spawnPos.y, spawnPos.z,
 						weapon.soundVolume(), weapon.soundPitch(), weapon.soundPitchRandom());
-		for (net.minecraft.server.level.ServerPlayer tracking :
-				net.fabricmc.fabric.api.networking.v1.PlayerLookup.tracking(this)) {
+		java.util.Collection<net.minecraft.server.level.ServerPlayer> trackingPlayers = net.fabricmc.fabric.api.networking.v1.PlayerLookup.tracking(this);
+		for (net.minecraft.server.level.ServerPlayer tracking : trackingPlayers) {
 			net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(tracking, soundPayload);
+		}
+		// Players drawing this vehicle as a far vehicle (FarVehicleSync) hear it too, as far as the sound carries (128 blocks at volume 1 - client.sound.WeaponFireSoundManager).
+		if (this.level() instanceof ServerLevel farLevel) {
+			for (net.minecraft.server.level.ServerPlayer far : FarVehicleSync.farListeners(farLevel, spawnPos, 128.0 * Math.max(0f, weapon.soundVolume()), trackingPlayers)) {
+				if (far != shooter) {
+					net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(far, soundPayload);
+				}
+			}
 		}
 		// The shooter themselves might not be "tracking" their own mount in the usual sense (they're riding it, not observing it from outside). that concern simply doesn't apply without an actual shooter, so this whole extra send is skipped entirely in that case.
 		if (shooter != null && !net.fabricmc.fabric.api.networking.v1.PlayerLookup.tracking(this).contains(shooter)) {

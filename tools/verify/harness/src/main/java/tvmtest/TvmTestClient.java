@@ -58,11 +58,28 @@ public class TvmTestClient implements ClientModInitializer {
 			}
 			client.options.hudHidden = true;
 		}
+		// Each real vehicle's landing gear in its first ticks in this client's world: one that came from far away must not move its gear (it should already be where the stand-in had it).
+		for (var e : client.world.getEntities()) {
+			if (!(e instanceof com.example.tudursvehiclemod.entity.AircraftEntity v)) {
+				continue;
+			}
+			int age = farSeen.merge(v.getId(), 1, Integer::sum);
+			if (age == 1 || age == 3 || age == 10 || age == 30) {
+				for (var part : v.getDefinition().toggleParts()) {
+					if ("landing_gear".equals(part.trigger())) {
+						TvmTest.LOG.info("[tvmtest] FARVEH real id={} age={} pos={},{},{} {}={}", v.getId(), age, Math.round(v.getX()), Math.round(v.getY()), Math.round(v.getZ()),
+								part.part(), Math.round(v.getTogglePartProgress(part.part()) * 100) / 100.0);
+						break;
+					}
+				}
+			}
+		}
 		if (farTicks % 40 == 0) {
 			var far = com.example.tudursvehiclemod.client.farvehicle.FarVehicleProxies.visible(client.world);
 			StringBuilder sb = new StringBuilder();
 			for (var v : far) {
 				sb.append(v.getType().getUntranslatedName()).append('@').append(Math.round(v.getX())).append(',').append(Math.round(v.getY())).append(',').append(Math.round(v.getZ()));
+				sb.append("[engine=").append(Math.round(v.tudursvehiclemod$getEngineSoundThrottle() * 100) / 100.0).append(']');
 				// Its landing gear parts' progress (0 when up) - drawn as the server reported (entity.FarVehiclePose).
 				for (var part : v.getDefinition().toggleParts()) {
 					if ("landing_gear".equals(part.trigger())) {
@@ -97,6 +114,7 @@ public class TvmTestClient implements ClientModInitializer {
 	// ------------------------------------------------------------------ speed sync
 	// -Dtvmtest.speedsync=1: logs the vehicle speed multiplier this client uses (entity.VehicleSpeedScaling) every 100 ticks in a world, for 600 ticks, then quits - change it on the server meanwhile (/tvmtest setspeed <x>) to see it follow.
 	int speedSyncTicks;
+	final java.util.Map<Integer, Integer> farSeen = new java.util.HashMap<>();
 	int driveTicks, driveRuns, driveDoneVehicle = -1;
 	net.minecraft.util.math.Vec3d driveStartPos;
 	double drivePeak, driveLastX, driveLastZ, driveStartX, driveStartZ;

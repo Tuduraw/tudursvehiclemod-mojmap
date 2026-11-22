@@ -41,6 +41,9 @@ final class FarVehicleTest {
 		});
 		// Gear up: the far stand-in should show it up too (entity.FarVehiclePose).
 		aircraft.tudursvehiclemod$setGearDeployed(false);
+		// Engine at 80%: the stand-in's engine sound follows the server's (FarVehiclePose.engine).
+		TvmTest.fillFuel(aircraft);
+		aircraft.tudursvehiclemod$syncCruiseSpeedAndThrottle(0f, 0.8f);
 		spawned.add(aircraft);
 		AbstractVehicleEntity heli = t.spawn(world, Identifier.of("tudur_sample:sample_helicopter"), new Vec3d(-2820.5, TvmTest.GROUND_Y + 10, 10.5));
 		heli.setNoGravity(true);
@@ -62,8 +65,18 @@ final class FarVehicleTest {
 		if (fireTicks < 0 || level == null) {
 			return;
 		}
+		if (fireTicks == 320 && shooter != null) {
+			// Walk the player up to the far vehicles: each comes into entity range, and must carry on with its parts as drawn (gear up stays up).
+			shooter.teleport(level, -2860.5, TvmTest.GROUND_Y + 1, -20.5, java.util.Set.of(), -90f, -5f, true);
+			TvmTest.LOG.info("[tvmtest] FARVEH moved player near");
+		}
 		if (fireTicks++ % 30 != 0) {
 			return;
+		}
+		if (shooter != null && fireTicks % 120 == 1) {
+			// Who would hear a weapon fired by the far halftrack (-2820, 30) - sounds are sent to them beyond the entity range (entity.FarVehicleSync.farListeners()).
+			TvmTest.LOG.info("[tvmtest] FARVEH farListeners={}", com.example.tudursvehiclemod.entity.FarVehicleSync.farListeners(level,
+					new net.minecraft.util.math.Vec3d(-2820.5, TvmTest.GROUND_Y, 30.5), 384.0, java.util.List.of()).size());
 		}
 		var projectile = new com.example.tudursvehiclemod.entity.projectile.VehicleModelProjectileEntity(level, shooter,
 				new net.minecraft.item.ItemStack(net.minecraft.item.Items.FIRE_CHARGE), 0f, 0.03f, 0f, false, false,

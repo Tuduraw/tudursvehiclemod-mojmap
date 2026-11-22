@@ -9,14 +9,15 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
  * <li>partAngles: each weapon part's yaw and pitch, then its parent stage's yaw and pitch (VehicleDefinition.weaponParts(), in that order, 4 per part), in 1/100 degree; {@link #NONE} where the vehicle hasn't one (the part's resting position is drawn).</li>
  * <li>spin: how fast its spinning parts (propellers, rotors) turn, as a multiple of each part's own rate.</li>
  * <li>destroyed: whether it is a wreck.</li>
+ * <li>engine: how hard its engine is working, 0-1, for its engine sound (AbstractVehicleEntity.tudursvehiclemod$getEngineSoundThrottle()).</li>
  * </ul>
  * Both sides read the same vehicle definition, so the lists line up by index. */
-public record FarVehiclePose(boolean destroyed, float spin, byte[] toggle, short[] partAngles) {
+public record FarVehiclePose(boolean destroyed, float spin, float engine, byte[] toggle, short[] partAngles) {
 
 	/** No angle (partAngles). */
 	public static final short NONE = Short.MIN_VALUE;
 
-	public static final FarVehiclePose EMPTY = new FarVehiclePose(false, 0f, new byte[0], new short[0]);
+	public static final FarVehiclePose EMPTY = new FarVehiclePose(false, 0f, 0f, new byte[0], new short[0]);
 
 	static short encodeAngle(Float degrees) {
 		if (degrees == null || !Float.isFinite(degrees)) {
@@ -32,6 +33,7 @@ public record FarVehiclePose(boolean destroyed, float spin, byte[] toggle, short
 	public void write(RegistryFriendlyByteBuf buf) {
 		buf.writeBoolean(this.destroyed);
 		buf.writeFloat(this.spin);
+		buf.writeFloat(this.engine);
 		buf.writeByteArray(this.toggle);
 		buf.writeVarInt(this.partAngles.length);
 		for (short angle : this.partAngles) {
@@ -42,6 +44,7 @@ public record FarVehiclePose(boolean destroyed, float spin, byte[] toggle, short
 	public static FarVehiclePose read(RegistryFriendlyByteBuf buf) {
 		boolean destroyed = buf.readBoolean();
 		float spin = buf.readFloat();
+		float engine = buf.readFloat();
 		byte[] toggle = buf.readByteArray(1024);
 		int count = buf.readVarInt();
 		if (count < 0 || count > 4096) {
@@ -51,6 +54,6 @@ public record FarVehiclePose(boolean destroyed, float spin, byte[] toggle, short
 		for (int i = 0; i < count; i++) {
 			angles[i] = buf.readShort();
 		}
-		return new FarVehiclePose(destroyed, spin, toggle, angles);
+		return new FarVehiclePose(destroyed, spin, engine, toggle, angles);
 	}
 }

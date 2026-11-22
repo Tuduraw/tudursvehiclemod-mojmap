@@ -199,6 +199,18 @@ with one setting. Default is `beam`.
   reports), propellers and rotors turning at their rate, and a wreck as a
   wreck. Wheels and tracks don't turn, and recoil, wakes, search light
   beams and smoke aren't drawn. It is lit as by open sky.
+- When a far vehicle comes into the render distance and becomes an
+  ordinary vehicle, its parts carry on from where the far vehicle had
+  them (gear and hatches open or closed, turrets' aim). Even without far
+  vehicles drawn, a vehicle coming into the render distance shows its gear,
+  hatches and the like as they are from the start, instead of moving them
+  there from their resting positions.
+- A far vehicle's engine sound and its weapons' fire sounds play too (the
+  engine's loudness and pitch follow the state the server reports). They
+  carry as far as a near vehicle's do: the engine sound by
+  `engine_sound_volume`, a fire sound by the weapon's `SoundVolume`.
+  Explosion sounds are the game's own and are heard only nearby, whatever
+  this setting.
 - Things to know:
   - Far vehicles aren't hidden by distant terrain, and may show through a
     mountain: an LOD mod's terrain isn't part of the game's own depth

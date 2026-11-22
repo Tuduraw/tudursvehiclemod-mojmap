@@ -12,7 +12,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 
-/** One looping OpenAL source per vehicle entity that has an engine_sound configured (see VehicleDefinition.engineSound()) and is currently loaded in the client.. */
+/** One looping OpenAL source per vehicle entity that has an engine_sound configured (see VehicleDefinition.engineSound()) and is currently loaded in the client - or drawn beyond its entity range as a far vehicle (client.farvehicle.FarVehicleProxies), with the engine's state the server reports. */
 public final class VehicleEngineSoundManager {
 
 	/** Gain at zero throttle. */
@@ -36,10 +36,16 @@ public final class VehicleEngineSoundManager {
 		}
 
 		Set<Integer> stillPresent = new HashSet<>();
+		// Vehicles in this client's world, then the far vehicles drawn beyond it (client.farvehicle.FarVehicleProxies) - keyed by the server's entity id either way, so a vehicle crossing between the two keeps its sound going.
+		Map<Integer, AbstractVehicleEntity> vehicles = new HashMap<>();
 		for (Entity entity : client.level.entitiesForRendering()) {
-			if (!(entity instanceof AbstractVehicleEntity vehicle)) {
-				continue;
+			if (entity instanceof AbstractVehicleEntity vehicle) {
+				vehicles.put(vehicle.getId(), vehicle);
 			}
+		}
+		com.example.tudursvehiclemod.client.farvehicle.FarVehicleProxies.visibleById(client.level).forEach(vehicles::putIfAbsent);
+		for (Map.Entry<Integer, AbstractVehicleEntity> present : vehicles.entrySet()) {
+			AbstractVehicleEntity vehicle = present.getValue();
 			var engineSoundName = vehicle.getDefinition().engineSound();
 			if (engineSoundName.isEmpty()) {
 				continue;
@@ -49,7 +55,7 @@ public final class VehicleEngineSoundManager {
 				continue;
 			}
 
-			int entityId = vehicle.getId();
+			int entityId = present.getKey();
 			stillPresent.add(entityId);
 			int source = engineSources.computeIfAbsent(entityId, id -> createLoopingSource(bufferId));
 			updateSource(source, vehicle, entityId);
@@ -106,29 +112,7 @@ public final class VehicleEngineSoundManager {
 		Vec3 velocity = vehicle.getDeltaMovement();
 		AL10.alSource3f(source, AL10.AL_VELOCITY, (float) velocity.x, (float) velocity.y, (float) velocity.z);
 
-		boolean rotorAlwaysSpinning = vehicle instanceof com.example.tudursvehiclemod.entity.HelicopterEntity
-				|| (vehicle instanceof com.example.tudursvehiclemod.entity.VtolEntity vtol && vtol.isHelicopterMode());
-		float rawThrottle;
-		if (vehicle.tudursvehiclemod$isUsingRampedAutopilotThrottle()) {
-			rawThrottle = Mth.clamp(vehicle.tudursvehiclemod$getCasWaypointSpeedFraction(), 0f, 1f);
-		} else if (vehicle.tudursvehiclemod$isDroneActive()) {
-			rawThrottle = Mth.clamp(vehicle.tudursvehiclemod$getDroneSpeedFraction(), 0f, 1f);
-		} else if (rotorAlwaysSpinning) {
-			float rotorFraction = Mth.clamp(vehicle.tudursvehiclemod$getSpinningPartSpeedMultiplier(), 0f, 1f);
-			if (vehicle.getControllingPassenger() instanceof net.minecraft.world.entity.player.Player) {
-				// Helicopter's own getThrottle() is -1.1 (0=hover), so (x+1)/2 maps it into the 0.1 fraction this calculation wants. VtolEntity's own hover-mode getThrottle() is ALREADY 0.1 (0.5=hover) - using it directly, with no transform at all, is what's actually correct for that convention.
-				float throttleFraction = vehicle instanceof com.example.tudursvehiclemod.entity.HelicopterEntity
-						? (Mth.clamp(vehicle.getThrottle(), -1f, 1f) + 1f) / 2f
-						: Mth.clamp(vehicle.getThrottle(), 0f, 1f);
-				// Averaged with the exact same value already driving this vehicle's own visible rotor-blade spin speed, rather than the throttle fraction alone - regardless of piloted state: excluding it while piloted produced a worse, stranger bug (rotor visibly spinning while sound went completely silent). Keeping sound consistent with the visible rotor animation at all times is what's actually correct here.
-				rawThrottle = (throttleFraction + rotorFraction) / 2f;
-			} else {
-				// Stationary helicopter/VTOL(-in-helicopter-mode) still plays engine sound at what sounds like a minimum volume floor, confirmed independent of both mob-drop and the recent yaw work: getThrottle() is never reset to any special "truly silent" sentinel on dismount - it just sits at whatever the last real flown value was (commonly 0, i.e. neutral/hover), which the (x+1)/2 transform above would otherwise keep reading as "still actively holding 50% power to hover" forever, even though rotorFraction (the OTHER half of that average) is already correctly reporting 0 for this same unmanned state. Averaging a correct 0 with an incorrectly-still-0.5 throttle fraction produced exactly the persistent ~25% floor this report describes. Using rotorFraction alone while unmanned - which by itself already correctly reaches exactly 0 once genuinely landed and stopped - is what actually reaches true silence.
-				rawThrottle = rotorFraction;
-			}
-		} else {
-			rawThrottle = Mth.clamp(Math.abs(vehicle.getThrottle()), 0f, 1f);
-		}
+		float rawThrottle = vehicle.tudursvehiclemod$getEngineSoundThrottle();
 		float previous = smoothedThrottle.getOrDefault(entityId, rawThrottle);
 		float smoothed = previous + (rawThrottle - previous) * SOUND_SMOOTHING;
 		smoothedThrottle.put(entityId, smoothed);

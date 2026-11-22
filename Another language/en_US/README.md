@@ -1241,18 +1241,19 @@ setting "Draw far vehicles" (`renderFarVehicles`) and the server setting
 "Far vehicle sync" (`farVehicleSyncEnabled`) shows those vehicles - and projectiles drawn with a model, such as
 missiles and bombs - over the distant terrain as well (both are off by
 default), including vehicles in force-loaded chunks (where CAS/carrier
-aircraft and flying projectiles keep chunks loaded, or another mod does). See `Readme_cfg.md`
+aircraft and flying projectiles keep chunks loaded, or another mod does).
+Their moving parts (landing gear, turrets and the like) are drawn as they
+are, and their engine and weapon fire sounds play. See `Readme_cfg.md`
 for the details and caveats (they may show through distant terrain, fog
 settings, and so on).
 
 ## Known incompatibilities
 
-- **Distant Horizons (not investigated)**: with Distant Horizons installed,
-  the far vehicle display described in "Using with LOD mods"
-  (`renderFarVehicles` / `farVehicleSyncEnabled`) has been reported not to
-  work. A conflict with Distant Horizons' own rendering is suspected, but
-  the cause hasn't been pinned down. The feature itself is kept (for other
-  setups, and for use on multiplayer servers)
+- **Distant Horizons**: with Distant Horizons installed, the far vehicle
+  display described in "Using with LOD mods" (`renderFarVehicles` /
+  `farVehicleSyncEnabled`) has been reported not to work. Setting
+  `vanillaFadeMode = "NONE"` in Distant Horizons' config file
+  (`config/DistantHorizons.toml`) works around it.
 - **Lithium**: Lithium's collision optimization
   (`mixin.entity.collisions.movement`) gathers the collision shapes for
   entity movement its own way, so runway floors (carriers and the like -

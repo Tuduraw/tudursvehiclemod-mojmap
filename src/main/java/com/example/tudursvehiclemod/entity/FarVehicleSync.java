@@ -188,6 +188,26 @@ public final class FarVehicleSync {
 		return entries;
 	}
 
+	/** The players drawing far vehicles (farVehicleSyncEnabled on, and they asked) in level within reach blocks of pos - and within the distance they draw far vehicles to - leaving out those in exclude (the ones already told as tracking players). For a far vehicle's sounds, which would otherwise reach only the players it is sent to as an entity. */
+	public static List<ServerPlayer> farListeners(ServerLevel level, net.minecraft.world.phys.Vec3 pos, double reach, java.util.Collection<ServerPlayer> exclude) {
+		if (REQUESTED.isEmpty() || reach <= 0 || !VehicleModServerConfig.get().farVehicleSyncEnabled) {
+			return List.of();
+		}
+		int maxDistance = Math.max(0, VehicleModServerConfig.get().farVehicleSyncMaxDistance);
+		List<ServerPlayer> found = new ArrayList<>();
+		for (ServerPlayer player : level.players()) {
+			Integer requested = REQUESTED.get(player.getUUID());
+			if (requested == null || exclude.contains(player) || !ServerPlayNetworking.canSend(player, FarVehicleSnapshotPayload.ID)) {
+				continue;
+			}
+			double limit = Math.min(reach, Math.min(requested, maxDistance));
+			if (player.distanceToSqr(pos) <= limit * limit) {
+				found.add(player);
+			}
+		}
+		return found;
+	}
+
 	/** Registers the payloads and server hooks (from ModNetworking). */
 	public static void register() {
 		net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.playC2S().register(FarVehicleRequestPayload.ID, FarVehicleRequestPayload.CODEC);
