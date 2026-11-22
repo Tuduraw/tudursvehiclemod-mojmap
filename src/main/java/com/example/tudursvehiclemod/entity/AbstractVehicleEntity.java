@@ -2572,6 +2572,93 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		return part.weaponName().map(name -> name.equals(weapons.get(selectedIndex).weaponName())).orElse(false);
 	}
 
+	/** The moving parts' state, for a far vehicle's stand-in on a client (FarVehiclePose, FarVehicleSync). Server side. */
+	public FarVehiclePose tudursvehiclemod$captureFarPose() {
+		VehicleDefinition def = this.getDefinition();
+		if (def == null) {
+			return FarVehiclePose.EMPTY;
+		}
+		java.util.List<TogglePart> toggles = def.toggleParts();
+		byte[] toggle = new byte[toggles.size()];
+		for (int i = 0; i < toggle.length; i++) {
+			float progress = Mth.clamp(this.togglePartProgress.getOrDefault(toggles.get(i).part(), 0f), 0f, 1f);
+			toggle[i] = (byte) Math.round(progress * 255f);
+		}
+		java.util.List<com.example.tudursvehiclemod.asset.WeaponPart> parts = def.weaponParts();
+		short[] angles = new short[parts.size() * 4];
+		for (int i = 0; i < parts.size(); i++) {
+			String name = parts.get(i).part();
+			angles[i * 4] = FarVehiclePose.encodeAngle(this.weaponPartCurrentYaw.get(name));
+			angles[i * 4 + 1] = FarVehiclePose.encodeAngle(this.weaponPartCurrentPitch.get(name));
+			angles[i * 4 + 2] = FarVehiclePose.encodeAngle(this.weaponPartParentCurrentYaw.get(name));
+			angles[i * 4 + 3] = FarVehiclePose.encodeAngle(this.weaponPartParentCurrentPitch.get(name));
+		}
+		float spin = this.tudursvehiclemod$isDestroyed() || def.spinningParts().isEmpty() ? 0f : this.getSpinningPartSpeedMultiplier();
+		return new FarVehiclePose(this.tudursvehiclemod$isDestroyed(), Float.isFinite(spin) ? spin : 0f, toggle, angles);
+	}
+
+	/** The last pose reported for this far vehicle's stand-in (tudursvehiclemod$setFarPose()); null on a real vehicle. */
+	private FarVehiclePose farPoseTarget;
+
+	/** A far vehicle's stand-in (client.farvehicle.FarVehicleProxies): the pose the server last reported, eased towards tick by tick (tudursvehiclemod$stepFarPose()) - or taken at once (snap: a new stand-in). A pose for another definition (lists of the wrong length) is ignored. */
+	public void tudursvehiclemod$setFarPose(FarVehiclePose pose, boolean snap) {
+		VehicleDefinition def = this.getDefinition();
+		if (pose == null || def == null || pose.toggle().length != def.toggleParts().size() || pose.partAngles().length != def.weaponParts().size() * 4) {
+			return;
+		}
+		this.farPoseTarget = pose;
+		this.entityData.set(DESTROYED, pose.destroyed());
+		if (snap) {
+			this.tudursvehiclemod$stepFarPose(1f);
+			this.prevTogglePartProgress.putAll(this.togglePartProgress);
+		}
+	}
+
+	/** Once per client tick for a far vehicle's stand-in, which never ticks itself: its parts move towards the reported pose, and its spinning parts turn. */
+	public void tudursvehiclemod$stepFarPose() {
+		this.tudursvehiclemod$stepFarPose(0.35f);
+	}
+
+	private void tudursvehiclemod$stepFarPose(float ease) {
+		FarVehiclePose pose = this.farPoseTarget;
+		VehicleDefinition def = this.getDefinition();
+		if (pose == null || def == null) {
+			return;
+		}
+		java.util.List<TogglePart> toggles = def.toggleParts();
+		for (int i = 0; i < toggles.size() && i < pose.toggle().length; i++) {
+			String name = toggles.get(i).part();
+			float current = this.togglePartProgress.getOrDefault(name, 0f);
+			float target = (pose.toggle()[i] & 0xFF) / 255f;
+			this.prevTogglePartProgress.put(name, current);
+			float next = current + (target - current) * ease;
+			this.togglePartProgress.put(name, Math.abs(target - next) < 0.002f ? target : next);
+		}
+		java.util.List<com.example.tudursvehiclemod.asset.WeaponPart> parts = def.weaponParts();
+		for (int i = 0; i < parts.size() && i * 4 + 3 < pose.partAngles().length; i++) {
+			String name = parts.get(i).part();
+			tudursvehiclemod$easeAngle(this.weaponPartCurrentYaw, name, pose.partAngles()[i * 4], ease);
+			tudursvehiclemod$easeAngle(this.weaponPartCurrentPitch, name, pose.partAngles()[i * 4 + 1], ease);
+			tudursvehiclemod$easeAngle(this.weaponPartParentCurrentYaw, name, pose.partAngles()[i * 4 + 2], ease);
+			tudursvehiclemod$easeAngle(this.weaponPartParentCurrentPitch, name, pose.partAngles()[i * 4 + 3], ease);
+		}
+		for (com.example.tudursvehiclemod.asset.PartAnimation part : def.spinningParts()) {
+			float previous = this.spinningPartsPhase.getOrDefault(part.part(), 0f);
+			this.prevSpinningPartsPhase.put(part.part(), previous);
+			this.spinningPartsPhase.put(part.part(), previous + part.degreesPerTick() * pose.spin());
+		}
+	}
+
+	private static void tudursvehiclemod$easeAngle(java.util.Map<String, Float> angles, String name, short encoded, float ease) {
+		Float target = FarVehiclePose.decodeAngle(encoded);
+		if (target == null) {
+			angles.remove(name);
+			return;
+		}
+		Float current = angles.get(name);
+		angles.put(name, current == null ? target : current + Mth.wrapDegrees(target - current) * ease);
+	}
+
 	/** Non-interpolated progress (0=closed, 1=open) for a named TogglePart, or 0 if this vehicle has no such part. */
 	public float getTogglePartProgress(String partName) {
 		return this.togglePartProgress.getOrDefault(partName, 0f);

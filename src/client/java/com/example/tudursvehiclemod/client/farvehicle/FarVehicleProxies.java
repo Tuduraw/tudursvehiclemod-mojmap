@@ -24,7 +24,7 @@ import org.joml.Quaternionf;
  *
  * <p>Each one the server reports is a stand-in: a vehicle entity of the same type and definition, made on this client but never added to the world, so it doesn't tick, collide or make a sound - it is only drawn (mixin.LevelRendererFarVehicleMixin), at the place, heading and attitude last reported, carried on smoothly between reports by the motion that came with them. It goes away as soon as the real vehicle comes into entity range (the real one is drawn instead), or when the server stops reporting it.
  *
- * <p>Drawn as a parked vehicle would be: moving parts (landing gear, turrets, rotors, hatches) are in their resting positions, and it is lit as by open sky.
+ * <p>Its moving parts are drawn as the server last reported them (entity.FarVehiclePose): landing gear, hatches, canopies, weapon bays and folding wings at their reported progress, turrets at their reported aim (both eased towards each report), propellers and rotors turning at the reported rate, and a wreck as a wreck. What only the client works out for a vehicle near it (wheel and track turning, recoil, wakes, search light beams, smoke) isn't drawn. It is lit as by open sky.
  *
  * <p>Projectiles drawn with a model (missiles, bombs, shells) get stand-ins the same way, carried on between reports by their motion and gravity. One that has hit something goes on for up to one report interval (4 ticks by default) before the next report drops it. */
 public final class FarVehicleProxies {
@@ -168,9 +168,11 @@ public final class FarVehicleProxies {
 				proxy = new Proxy(entity);
 				entity.tudursvehiclemod$applyExternalPose(pos, orientation);
 				entity.setOldPosAndRot();
+				entity.tudursvehiclemod$setFarPose(entry.pose(), true);
 				PROXIES.put(entry.entityId(), proxy);
 			} else {
 				proxy.correction = proxy.entity.position().subtract(pos);
+				proxy.entity.tudursvehiclemod$setFarPose(entry.pose(), false);
 			}
 			proxy.reportedPos = pos;
 			proxy.motion = new Vec3(entry.vx(), entry.vy(), entry.vz());
@@ -275,6 +277,7 @@ public final class FarVehicleProxies {
 			Quaternionf orientation = proxy.entity.tudursvehiclemod$getBodyOrientation().slerp(proxy.reportedOrientation, 0.35f);
 			proxy.entity.setOldPosAndRot();
 			proxy.entity.tudursvehiclemod$applyExternalPose(pos, orientation);
+			proxy.entity.tudursvehiclemod$stepFarPose();
 			proxy.entity.tickCount++;
 		}
 	}

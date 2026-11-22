@@ -16,7 +16,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import org.joml.Quaternionf;
 
-/** Tells players about vehicles (and projectiles drawn with a model - missiles, bombs, shells) too far away for the game to send them as entities, so a client with an LOD mod (Distant Horizons and the like, which draw terrain far beyond the render distance) can draw them over that distant terrain too (client.FarVehicleProxies).
+/** Tells players about vehicles (and projectiles drawn with a model - missiles, bombs, shells) too far away for the game to send them as entities, so a client with an LOD mod (Distant Horizons and the like, which draw terrain far beyond the render distance) can draw them over that distant terrain too (client.FarVehicleProxies) - with their moving parts as they are (FarVehiclePose: landing gear, hatches, turrets, rotors).
  *
  * <p>Both sides have to want it: the server's farVehicleSyncEnabled (off by default - it tells players where far-away vehicles are, which a PvP server may not want), and the client's renderFarVehicles (off by default), which sends the distance it wants (FarVehicleRequestPayload). Every farVehicleSyncIntervalTicks the server sends each such player the vehicles in their world within that distance (and within farVehicleSyncMaxDistance), nearest first, up to farVehicleSyncMaxCount, leaving out the ones close enough to be sent as entities anyway.
  *
@@ -183,7 +183,7 @@ public final class FarVehicleSync {
 			entries.add(new FarVehicleSnapshotPayload.Entry(vehicle.getId(), BuiltInRegistries.ENTITY_TYPE.getKey(vehicle.getType()), definition,
 					vehicle.getX(), vehicle.getY(), vehicle.getZ(),
 					(float) (vehicle.getX() - vehicle.xo), (float) (vehicle.getY() - vehicle.yo), (float) (vehicle.getZ() - vehicle.zo),
-					q.x, q.y, q.z, q.w));
+					q.x, q.y, q.z, q.w, vehicle.tudursvehiclemod$captureFarPose()));
 		}
 		return entries;
 	}

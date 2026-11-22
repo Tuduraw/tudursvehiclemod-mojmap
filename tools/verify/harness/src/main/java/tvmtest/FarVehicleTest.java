@@ -39,6 +39,8 @@ final class FarVehicleTest {
 			vehicle.tudursvehiclemod$applyExternalPose(pos, new org.joml.Quaternionf().rotationY((float) Math.toRadians(-yaw)).rotateZ((float) Math.toRadians(-30)));
 			return true;
 		});
+		// Gear up: the far stand-in should show it up too (entity.FarVehiclePose).
+		aircraft.tudursvehiclemod$setGearDeployed(false);
 		spawned.add(aircraft);
 		AbstractVehicleEntity heli = t.spawn(world, Identifier.of("tudur_sample:sample_helicopter"), new Vec3d(-2820.5, TvmTest.GROUND_Y + 10, 10.5));
 		heli.setNoGravity(true);

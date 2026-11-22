@@ -193,8 +193,12 @@ with one setting. Default is `beam`.
   LOD mod draws.
 - Only works when the server (in single player, the world) has "Far
   vehicle sync" (`farVehicleSyncEnabled`, below) on.
-- Far vehicles are drawn simplified: moving parts (landing gear, turrets,
-  rotors, hatches) at rest, lit as by open sky.
+- A far vehicle's moving parts are drawn as the server reports them:
+  landing gear, hatches, canopies, weapon bays and folding wings open or
+  closed as they are, turrets where they point (both eased between
+  reports), propellers and rotors turning at their rate, and a wreck as a
+  wreck. Wheels and tracks don't turn, and recoil, wakes, search light
+  beams and smoke aren't drawn. It is lit as by open sky.
 - Things to know:
   - Far vehicles aren't hidden by distant terrain, and may show through a
     mountain: an LOD mod's terrain isn't part of the game's own depth

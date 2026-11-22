@@ -11,9 +11,9 @@ import net.minecraft.resources.Identifier;
 /** Server -> client: the vehicles and projectiles the client asked to be told about (FarVehicleRequestPayload) that are beyond its own entity range - where each is, how it is moving and which way it faces, enough to draw it. Each list, when sent (hasVehicles/hasProjectiles - they are sent at different rates), is the whole current list: one missing from it is no longer to be shown (entity.FarVehicleSync, client.farvehicle.FarVehicleProxies). */
 public record FarVehicleSnapshotPayload(boolean hasVehicles, List<Entry> vehicles, boolean hasProjectiles, List<ProjectileEntry> projectiles) implements CustomPacketPayload {
 
-	/** One vehicle: its entity id on the server, entity type and vehicle definition ids, position, motion per tick, and body orientation quaternion. */
+	/** One vehicle: its entity id on the server, entity type and vehicle definition ids, position, motion per tick, body orientation quaternion, and its moving parts (landing gear, hatches, turrets, rotors - entity.FarVehiclePose). */
 	public record Entry(int entityId, Identifier entityType, Identifier definition, double x, double y, double z,
-			float vx, float vy, float vz, float qx, float qy, float qz, float qw) {
+			float vx, float vy, float vz, float qx, float qy, float qz, float qw, com.example.tudursvehiclemod.entity.FarVehiclePose pose) {
 	}
 
 	/** One projectile drawn with a model: its entity id on the server, model, texture, scale and tint, position, motion per tick, gravity (blocks/tick², to carry the motion on between reports), and heading. */
@@ -43,6 +43,7 @@ public record FarVehicleSnapshotPayload(boolean hasVehicles, List<Entry> vehicle
 						buf.writeFloat(e.qy());
 						buf.writeFloat(e.qz());
 						buf.writeFloat(e.qw());
+						e.pose().write(buf);
 					}
 				}
 				buf.writeBoolean(payload.hasProjectiles());
@@ -73,7 +74,8 @@ public record FarVehicleSnapshotPayload(boolean hasVehicles, List<Entry> vehicle
 					int count = buf.readVarInt();
 					for (int i = 0; i < count; i++) {
 						vehicles.add(new Entry(buf.readVarInt(), buf.readIdentifier(), buf.readIdentifier(), buf.readDouble(), buf.readDouble(), buf.readDouble(),
-								buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat()));
+								buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(),
+								com.example.tudursvehiclemod.entity.FarVehiclePose.read(buf)));
 					}
 				}
 				boolean hasProjectiles = buf.readBoolean();

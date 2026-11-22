@@ -62,7 +62,15 @@ public class TvmTestClient implements ClientModInitializer {
 			var far = com.example.tudursvehiclemod.client.farvehicle.FarVehicleProxies.visible(client.world);
 			StringBuilder sb = new StringBuilder();
 			for (var v : far) {
-				sb.append(v.getType().getUntranslatedName()).append('@').append(Math.round(v.getX())).append(',').append(Math.round(v.getY())).append(',').append(Math.round(v.getZ())).append(' ');
+				sb.append(v.getType().getUntranslatedName()).append('@').append(Math.round(v.getX())).append(',').append(Math.round(v.getY())).append(',').append(Math.round(v.getZ()));
+				// Its landing gear parts' progress (0 when up) - drawn as the server reported (entity.FarVehiclePose).
+				for (var part : v.getDefinition().toggleParts()) {
+					if ("landing_gear".equals(part.trigger())) {
+						sb.append('[').append(part.part()).append('=').append(Math.round(v.getTogglePartProgress(part.part()) * 100) / 100.0).append(']');
+						break;
+					}
+				}
+				sb.append(' ');
 			}
 			int real = 0;
 			for (var e : client.world.getEntities()) {
