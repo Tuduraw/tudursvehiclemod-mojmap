@@ -650,7 +650,7 @@ Distant HorizonsなどのLOD modは、描画距離より遠くの地形を描き
 
 ## 既知の非互換性
 
-- **Distant Horizons(未検証)**: Distant Horizonsと併用すると、「LOD modとの併用」の遠方の機体表示(`renderFarVehicles`/`farVehicleSyncEnabled`)が機能しないことが報告されています。Distant Horizons側の描画処理との競合が疑われますが、原因は特定できていません。機能そのものは残しています(Distant Horizons以外の環境や、マルチプレイサーバーでの利用を想定)
+- **Distant Horizons**: Distant Horizonsと併用すると、「LOD modとの併用」の遠方の機体表示(`renderFarVehicles`/`farVehicleSyncEnabled`)が機能しないことが報告されています。Distant Horizons側の設定ファイル(`config/DistantHorizons.toml`)で`vanillaFadeMode = "NONE"`にすると回避できます。
 - **Lithium**: Lithiumの当たり判定の最適化(`mixin.entity.collisions.movement`)は、エンティティの移動判定に使う当たり判定を独自の方法で集めるため、空母などの滑走路の床(上記「滑走路」)が判定に入らず、プレイヤーや艦載機が床をすり抜けます。現時点では対応していません。Lithiumと併用する場合は、Lithiumの設定ファイル(`config/lithium.properties`)で`mixin.entity.collisions.movement=false`にすると回避できる見込みです(未検証)
 
 ## ビルド方法
