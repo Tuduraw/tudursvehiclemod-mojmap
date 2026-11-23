@@ -12,9 +12,10 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
  * does that, since the 'H' key itself is already taken by hatch/canopy
  * toggle here).
  *
- * forceCamera/fixedYaw/fixedPitch are parsed and stored here for a future
- * pass (see README's own doc) - only x/y/z (the actual eye position) is
- * currently wired up to anything. */
+ * x/y/z: the eye position (AbstractVehicleEntity.getRotatedEyePos()).
+ * forceCamera/fixedYaw/fixedPitch: applied to the view by
+ * client.mixin.CameraMixin's tudursvehiclemod$applyCameraPositionOptions()
+ * (see its doc). */
 public record CameraPositionEntry(
 		double x, double y, double z,
 		// 4th param - per MC Heli's own doc: "常にカメラからの視点になる" (always uses the camera viewpoint, i.e. never toggles to the passenger's own first-person view) when true.

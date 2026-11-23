@@ -19,6 +19,10 @@ public class TvmTestClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+		if (System.getProperty("tvmtest.seatcheck") != null) {
+			ClientTickEvents.END_CLIENT_TICK.register(this::seatCheckTick);
+			return;
+		}
 		if (System.getProperty("tvmtest.farveh") != null) {
 			ClientTickEvents.END_CLIENT_TICK.register(this::farVehicleTick);
 			return;
@@ -35,6 +39,114 @@ public class TvmTestClient implements ClientModInitializer {
 			return;
 		}
 		ClientTickEvents.END_CLIENT_TICK.register(this::tick);
+	}
+
+	// ------------------------------------------------------------------ seats and camera positions
+	// -Dtvmtest.seatcheck="<pitch>,<roll>,<spin>" (the same values as /tvmtest seat on the server): while riding a vehicle, installs the same motion on it here (SeatTest.controller()), and every tick checks, at tick progress 1 and 0.5, the player's position against its seat and its eye (getRotatedEyePos(), what the camera uses) against the seat's camera position (or the seat plus eye height), both placed as the model is drawn (VehicleEntityRenderer: position + render Y offset + body frame offset + body orientation * (offset * scale)). Every 40 ticks logs the largest differences seen ("SEATCHECK"), and the camera's actual position in the vehicle's model coordinates. Quits after 4 vehicles (or 6000 ticks).
+	int seatTicks;
+	int seatVehicleId = -1;
+	int seatVehicles;
+	double seatErr1, seatErrHalf, eyeErr1, eyeErrHalf;
+
+	void seatCheckTick(MinecraftClient client) {
+		if (client.world == null || client.player == null) {
+			return;
+		}
+		if (++seatTicks > 6000) {
+			client.scheduleStop();
+			return;
+		}
+		if (!(client.player.getVehicle() instanceof com.example.tudursvehiclemod.entity.AbstractVehicleEntity v)) {
+			return;
+		}
+		int seat = v.tudursvehiclemod$getAssignedSeatIndex(client.player);
+		var def = v.getDefinition();
+		if (seat < 0 || seat >= def.seats().size()) {
+			return;
+		}
+		if (v.getId() != seatVehicleId) {
+			seatVehicleId = v.getId();
+			seatVehicles++;
+			String[] p = System.getProperty("tvmtest.seatcheck").split(",");
+			v.tudursvehiclemod$setExternalMotionController(SeatTest.controller(v.getEntityPos(), Float.parseFloat(p[0]), Float.parseFloat(p[1]), Float.parseFloat(p[2])));
+			seatErr1 = seatErrHalf = eyeErr1 = eyeErrHalf = 0;
+			seatTicks = 0;
+			return;
+		}
+		var seatDef = def.seats().get(seat);
+		// The first ticks after mounting are left out: the vehicle swings from where it was spawned to the set attitude, and the player from where it stood.
+		for (float td : seatTicks <= 10 ? new float[0] : new float[]{1.0f, 0.5f}) {
+			net.minecraft.util.math.Vec3d seatModel = new net.minecraft.util.math.Vec3d(seatDef.offsetX(), seatDef.offsetY(), seatDef.offsetZ());
+			net.minecraft.util.math.Vec3d expectedSeat = modelToWorld(v, seatModel, 0f, td);
+			net.minecraft.util.math.Vec3d actualSeat = client.player.getLerpedPos(td);
+			net.minecraft.util.math.Vec3d expectedEye;
+			if (!seatDef.cameraPositions().isEmpty()) {
+				var cam = seatDef.cameraPositions().get(0);
+				expectedEye = modelToWorld(v, new net.minecraft.util.math.Vec3d(cam.x(), cam.y(), cam.z()), 0f, td);
+			} else {
+				expectedEye = modelToWorld(v, seatModel, client.player.getStandingEyeHeight(), td);
+			}
+			net.minecraft.util.math.Vec3d actualEye = v.getRotatedEyePos(client.player, td);
+			double se = expectedSeat.distanceTo(actualSeat);
+			double ee = expectedEye.distanceTo(actualEye);
+			if (se > 0.3 && Boolean.getBoolean("tvmtest.seatcheck.verbose")) {
+				TvmTest.LOG.info("[tvmtest] SEATSPIKE t={} td={} se={} exp={} act={} playerOld={} playerNow={} vOld={} vNow={} rot={}/{}/{} prev={}/{}/{}", seatTicks, td, r(se), expectedSeat, actualSeat,
+						new net.minecraft.util.math.Vec3d(client.player.lastX, client.player.lastY, client.player.lastZ), client.player.getEntityPos(),
+						new net.minecraft.util.math.Vec3d(v.lastX, v.lastY, v.lastZ), v.getEntityPos(), r(v.getYaw()), r(v.getPitch()), r(v.getRoll()), r(v.lastYaw), r(v.lastPitch), r(v.getRoll(0f)));
+			}
+			if (td == 1.0f) {
+				seatErr1 = Math.max(seatErr1, se);
+				eyeErr1 = Math.max(eyeErr1, ee);
+			} else {
+				seatErrHalf = Math.max(seatErrHalf, se);
+				eyeErrHalf = Math.max(eyeErrHalf, ee);
+			}
+		}
+		if (seatTicks == 100 && Boolean.getBoolean("tvmtest.seatcheck.cycle")) {
+			// The seat's next camera position (the C key), and from then on the camera options of that one.
+			v.tudursvehiclemod$cycleCameraPosition(seat);
+			TvmTest.LOG.info("[tvmtest] SEATCHECK cycled camera: {}", v.tudursvehiclemod$getActiveCameraPosition(client.player));
+		}
+		if (seatTicks % 40 == 0) {
+			// The camera where it was last drawn, in the vehicle's model coordinates (at tick progress 1 - only a rough check).
+			var camera = client.gameRenderer.getCamera();
+			net.minecraft.util.math.Vec3d camWorld = camera.getCameraPos();
+			net.minecraft.util.math.Vec3d camModel = worldToModel(v, camWorld);
+			// Where it looks, in the body's frame: yaw (0 = ahead, positive = to the right as vehicle yaw goes) and pitch (positive = down), and whether the player's own body is shown (detached).
+			org.joml.Vector3f look = camera.getRotation().transform(new org.joml.Vector3f(0, 0, -1));
+			v.tudursvehiclemod$getBodyOrientation(1f).conjugate().transform(look);
+			double lookYaw = Math.toDegrees(Math.atan2(-look.x, look.z));
+			double lookPitch = Math.toDegrees(-Math.asin(Math.max(-1, Math.min(1, look.y))));
+			TvmTest.LOG.info("[tvmtest] SEATVIEW {} seat={} t={} active={} lookYaw={} lookPitch={} detached={} cameraModel={},{},{}", def.model(), seat, seatTicks,
+					v.tudursvehiclemod$getActiveCameraPosition(client.player), r(lookYaw), r(lookPitch), camera.isThirdPerson(), r(camModel.x), r(camModel.y), r(camModel.z));
+			TvmTest.LOG.info("[tvmtest] SEATCHECK {} seat={} t={} seatErr(1/0.5)={}/{} eyeErr(1/0.5)={}/{} cameraModel={},{},{} thirdPerson={} rot={}/{}/{}",
+					def.model(), seat, seatTicks, r(seatErr1), r(seatErrHalf), r(eyeErr1), r(eyeErrHalf), r(camModel.x), r(camModel.y), r(camModel.z),
+					!client.options.getPerspective().isFirstPerson(), r(v.getYaw()), r(v.getPitch()), r(v.getRoll()));
+		}
+		if (seatTicks >= 200 && seatVehicles >= Integer.getInteger("tvmtest.seatcount", 4)) {
+			client.scheduleStop();
+		}
+	}
+
+	static double r(double d) {
+		return Math.round(d * 1000) / 1000.0;
+	}
+
+	/** A point in the vehicle's model coordinates, plus an upward offset in the body's own frame (eye height), placed in the world as VehicleEntityRenderer draws the model. */
+	static net.minecraft.util.math.Vec3d modelToWorld(com.example.tudursvehiclemod.entity.AbstractVehicleEntity v, net.minecraft.util.math.Vec3d model, float bodyUp, float td) {
+		float scale = v.getDefinition().scale();
+		org.joml.Vector3f p = new org.joml.Vector3f((float) model.x * scale, (float) model.y * scale + bodyUp, (float) model.z * scale);
+		v.tudursvehiclemod$getBodyOrientation(td).transform(p);
+		net.minecraft.util.math.Vec3d base = v.getLerpedPos(td).add(0, v.getRenderYOffset(td), 0).add(v.tudursvehiclemod$getBodyFrameOffset(td));
+		return base.add(p.x, p.y, p.z);
+	}
+
+	static net.minecraft.util.math.Vec3d worldToModel(com.example.tudursvehiclemod.entity.AbstractVehicleEntity v, net.minecraft.util.math.Vec3d world) {
+		net.minecraft.util.math.Vec3d base = v.getLerpedPos(1f).add(0, v.getRenderYOffset(1f), 0).add(v.tudursvehiclemod$getBodyFrameOffset(1f));
+		org.joml.Vector3f p = new org.joml.Vector3f((float) (world.x - base.x), (float) (world.y - base.y), (float) (world.z - base.z));
+		v.tudursvehiclemod$getBodyOrientation(1f).conjugate().transform(p);
+		p.div(v.getDefinition().scale());
+		return new net.minecraft.util.math.Vec3d(p.x, p.y, p.z);
 	}
 
 	// ------------------------------------------------------------------ far vehicles

@@ -327,17 +327,32 @@ fall and causes no practical issue).
 ### `camera_positions`
 - **Format**: array of objects (default: empty array)
 - **Description**: The list of view positions usable from this seat.
-  With several set, the H key cycles between views (corresponds to MC
-  Heli's own `CameraPosition`). Each element:
-  - `x` / `y` / `z` (required): the view coordinate
-  - `force_camera` (default `false`): always uses this camera view
-    (never switches to first-person)
-  - `fixed_yaw` / `fixed_pitch` (optional): a fixed view angle
+  With several set, the C key ("Camera position switch") cycles between
+  views (corresponds to MC Heli's own `CameraPosition`). The choice is
+  kept per seat: moving to another seat starts from that seat's own
+  choice. Each element:
+  - `x` / `y` / `z` (required): the view (eye) coordinate, in the same
+    model coordinates as the seat (before `scale`), turning with the
+    vehicle. A seat without any looks from its seat position raised by the
+    eye height (1.62)
+  - `force_camera` (default `false`): always views from this position.
+    Third person (F5) doesn't pull the view back; it stays here. A view
+    more than a block from the seat's own eye position (one from behind
+    the vehicle, say) also shows your own player
+  - `fixed_yaw` / `fixed_pitch` (optional): the view direction fixed
+    relative to the vehicle, in degrees. `fixed_yaw` is 0 straight ahead,
+    positive to the right; `fixed_pitch` is positive downward (as
+    Minecraft's own angles). With only one given, the other axis is as
+    usual (your own look - for an aircraft outside free look, straight
+    ahead). The view still turns and tilts with the vehicle. Only the view
+    is fixed: weapons that follow your look still aim where the mouse
+    points
 - **Example**:
   ```json
   "camera_positions": [
     { "x": 0.0, "y": 0.6, "z": 0.2 },
-    { "x": 0.0, "y": 3.0, "z": -6.0, "force_camera": true }
+    { "x": 0.0, "y": 3.0, "z": -6.0, "force_camera": true },
+    { "x": 0.0, "y": -0.5, "z": 1.0, "force_camera": true, "fixed_pitch": 90.0 }
   ]
   ```
 

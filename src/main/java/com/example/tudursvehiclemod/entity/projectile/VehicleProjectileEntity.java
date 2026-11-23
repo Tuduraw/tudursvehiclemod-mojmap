@@ -480,11 +480,30 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 				newGrid.add(new net.minecraft.world.level.ChunkPos(chunkX + dx, chunkZ + dz));
 			}
 		}
+		// And the chunks along its path for the next PROJECTILE_CHUNK_LOOKAHEAD_TICKS: a chunk takes a few ticks to load (far longer if it has to be generated), and a fast projectile (a shell, a missile) would otherwise fly past the 3x3 grid into a chunk not loaded yet - where the game stops ticking it until the chunk is ready, so it hangs in the air (and, drawn far away - FarVehicleSync - stops there). Asked early, the chunk is ready when the projectile gets there. A slow projectile's path stays inside the grid, adding nothing.
+		net.minecraft.world.phys.Vec3 motion = this.getDeltaMovement();
+		double horizontalSpeed = Math.sqrt(motion.x * motion.x + motion.z * motion.z);
+		if (horizontalSpeed > 1.0E-3) {
+			double reach = Math.min(horizontalSpeed * PROJECTILE_CHUNK_LOOKAHEAD_TICKS, PROJECTILE_CHUNK_LOOKAHEAD_MAX_BLOCKS);
+			double stepX = motion.x / horizontalSpeed * 8.0;
+			double stepZ = motion.z / horizontalSpeed * 8.0;
+			for (double travelled = 8.0; travelled <= reach; travelled += 8.0) {
+				double fraction = travelled / 8.0;
+				newGrid.add(new net.minecraft.world.level.ChunkPos(
+						net.minecraft.core.SectionPos.blockToSectionCoord(this.getX() + stepX * fraction),
+						net.minecraft.core.SectionPos.blockToSectionCoord(this.getZ() + stepZ * fraction)));
+			}
+		}
 		ProjectileChunkLoadTracker.update(this, serverWorld, newGrid);
 		this.projectileForcedChunks = newGrid;
 		this.projectileForcedCenterX = chunkX;
 		this.projectileForcedCenterZ = chunkZ;
 	}
+
+	/** How far ahead (in ticks of flight at its current speed) a projectile keeps the chunks on its path loaded (tudursvehiclemod$updateProjectileForcedChunks()). */
+	private static final int PROJECTILE_CHUNK_LOOKAHEAD_TICKS = 30;
+	/** ...but no further than this many blocks, so one very fast projectile doesn't take a long line of chunks out of the server's budget (projectileForcedChunkLimit). */
+	private static final double PROJECTILE_CHUNK_LOOKAHEAD_MAX_BLOCKS = 256.0;
 
 	/** The chunk projectileForcedChunks is centred on (meaningless while that set is empty). */
 	private int projectileForcedCenterX;

@@ -10217,10 +10217,10 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		positionUpdater.accept(passenger, targetX, targetY, targetZ);
 	}
 
-	/** MC Heli's CameraPosition: which cameraPositions() entry is active for the assigned seat. Unsynced/client-only field - only ever read from client-side camera code (CameraMixin) for the local player's own view. */
-	private int cameraPositionIndex = 0;
+	/** MC Heli's CameraPosition: which cameraPositions() entry is active, per seat (seat index -> entry index; absent = the first). Unsynced/client-only - only ever read from client-side camera code (CameraMixin) for the local player's own view. Kept per seat, so moving to another seat starts from that seat's own choice rather than carrying the old seat's index over. */
+	private final java.util.Map<Integer, Integer> cameraPositionIndex = new java.util.HashMap<>();
 
-	/** Cycles cameraPositionIndex forward (wrapping), via the client's own camera-switch key (a new key, separate from hatch/canopy's 'H'). No-op if fewer than 2 camera positions are configured. */
+	/** Cycles cameraPositionIndex forward (wrapping), via the client's own camera-switch key (a new key, separate from hatch/canopy's 'H'), for that seat only. No-op if fewer than 2 camera positions are configured. */
 	public void tudursvehiclemod$cycleCameraPosition(int seatIndex) {
 		java.util.List<SeatDefinition> seats = this.getDefinition().seats();
 		if (seatIndex < 0 || seatIndex >= seats.size()) {
@@ -10230,7 +10230,35 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		if (count < 2) {
 			return;
 		}
-		this.cameraPositionIndex = (this.cameraPositionIndex + 1) % count;
+		this.cameraPositionIndex.merge(seatIndex, 1, (old, one) -> (old + one) % count);
+	}
+
+	/** The cameraPositions() entry passenger is viewing from now (its seat's current choice - tudursvehiclemod$cycleCameraPosition()), or null when its seat has none (it looks from the seat itself). */
+	public com.example.tudursvehiclemod.asset.CameraPositionEntry tudursvehiclemod$getActiveCameraPosition(Entity passenger) {
+		VehicleDefinition def = this.getDefinition();
+		int index = this.tudursvehiclemod$getAssignedSeatIndex(passenger);
+		if (def == null || index < 0 || index >= def.seats().size()) {
+			return null;
+		}
+		java.util.List<com.example.tudursvehiclemod.asset.CameraPositionEntry> cameras = def.seats().get(index).cameraPositions();
+		if (cameras.isEmpty()) {
+			return null;
+		}
+		return cameras.get(this.cameraPositionIndex.getOrDefault(index, 0) % cameras.size());
+	}
+
+	/** How far (in blocks) passenger's active camera position is from where it would look from without one - its seat raised by its eye height. A camera far from that (a chase view behind the vehicle) shows the passenger's own body (client.mixin.CameraMixin). */
+	public double tudursvehiclemod$getCameraDistanceFromSeatEye(Entity passenger) {
+		com.example.tudursvehiclemod.asset.CameraPositionEntry camera = this.tudursvehiclemod$getActiveCameraPosition(passenger);
+		if (camera == null) {
+			return 0.0;
+		}
+		SeatDefinition seat = this.getDefinition().seats().get(this.tudursvehiclemod$getAssignedSeatIndex(passenger));
+		double scale = this.getDefinition().scale();
+		double dx = (camera.x() - seat.offsetX()) * scale;
+		double dy = camera.y() * scale - (seat.offsetY() * scale + passenger.getEyeHeight());
+		double dz = (camera.z() - seat.offsetZ()) * scale;
+		return Math.sqrt(dx * dx + dy * dy + dz * dz);
 	}
 
 	/** Where `passenger`'s EYE should be, given the vehicle's full (render- interpolated) yaw/pitch/roll. */
@@ -10250,7 +10278,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			// entry via tudursvehiclemod$cycleCameraPosition() (see that
 			// method's own doc for why 'H' itself couldn't be reused here).
 			com.example.tudursvehiclemod.asset.CameraPositionEntry cameraPosition =
-					seat.cameraPositions().get(this.cameraPositionIndex % seat.cameraPositions().size());
+					seat.cameraPositions().get(this.cameraPositionIndex.getOrDefault(index, 0) % seat.cameraPositions().size());
 			local = new org.joml.Vector3f(
 					(float) (cameraPosition.x() * def.scale()),
 					(float) (cameraPosition.y() * def.scale()),

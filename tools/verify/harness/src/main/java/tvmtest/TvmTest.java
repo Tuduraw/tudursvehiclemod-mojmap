@@ -99,6 +99,7 @@ public class TvmTest implements ModInitializer {
 		ServerTickEvents.END_SERVER_TICK.register(srv -> DestroyRideTest.tick());
 		ServerTickEvents.END_SERVER_TICK.register(srv -> TakeoffTest.tick());
 		ServerTickEvents.END_SERVER_TICK.register(srv -> FarVehicleTest.tick());
+		ServerTickEvents.END_SERVER_TICK.register(srv -> FarShotTest.tick());
 		ServerTickEvents.END_SERVER_TICK.register(srv -> AvoidTest.tick());
 		CommandRegistrationCallback.EVENT.register((dispatcher, access, env) -> dispatcher.register(
 				CommandManager.literal("tvmtest").requires(src -> true)
@@ -160,6 +161,14 @@ public class TvmTest implements ModInitializer {
 								.then(CommandManager.argument("height", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 200))
 								.executes(ctx -> { AvoidTest.start(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "mode").equals("on"), StringArgumentType.getString(ctx, "obstacle"),
 										StringArgumentType.getString(ctx, "aircraft"), com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "height")); return 1; }))))))
+						.then(CommandManager.literal("farshot").then(CommandManager.argument("player", StringArgumentType.word()).then(CommandManager.argument("speed", com.mojang.brigadier.arguments.DoubleArgumentType.doubleArg())
+								.executes(ctx -> { FarShotTest.start(ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "player"), com.mojang.brigadier.arguments.DoubleArgumentType.getDouble(ctx, "speed")); return 1; }))))
+						.then(CommandManager.literal("seat").then(CommandManager.argument("player", StringArgumentType.word()).then(CommandManager.argument("vehicle", StringArgumentType.string())
+								.then(CommandManager.argument("seat", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0)).then(CommandManager.argument("pitch", com.mojang.brigadier.arguments.FloatArgumentType.floatArg())
+								.then(CommandManager.argument("roll", com.mojang.brigadier.arguments.FloatArgumentType.floatArg()).then(CommandManager.argument("spin", com.mojang.brigadier.arguments.FloatArgumentType.floatArg())
+								.executes(ctx -> { SeatTest.start(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "player"), StringArgumentType.getString(ctx, "vehicle"),
+										com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "seat"), com.mojang.brigadier.arguments.FloatArgumentType.getFloat(ctx, "pitch"),
+										com.mojang.brigadier.arguments.FloatArgumentType.getFloat(ctx, "roll"), com.mojang.brigadier.arguments.FloatArgumentType.getFloat(ctx, "spin")); return 1; }))))))))
 						.then(CommandManager.literal("zonepart").then(CommandManager.argument("vehicle", StringArgumentType.string())
 								.executes(ctx -> { ZoneTest.partRun(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "vehicle")); return 1; })))
 						.then(CommandManager.literal("zoneshow").then(CommandManager.argument("vehicle", StringArgumentType.string())

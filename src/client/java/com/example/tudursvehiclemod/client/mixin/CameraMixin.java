@@ -27,6 +27,9 @@ public abstract class CameraMixin {
 	@Invoker("setPosition")
 	public abstract void tudursvehiclemod$setPos(Vec3 pos);
 
+	@org.spongepowered.asm.mixin.Shadow
+	private boolean detached;
+
 	@Inject(method = "setup(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/entity/Entity;ZZF)V", at = @At("TAIL"))
 	private void tudursvehiclemod$applyVehicleRollAndPos(Level area, Entity focusedEntity, boolean thirdPerson,
 													boolean inverseView, float tickProgress, CallbackInfo ci) {
@@ -168,6 +171,71 @@ public abstract class CameraMixin {
 		// eyePos instead of the player's raw seat position.
 		Vec3 eyePos = vehicle.getRotatedEyePos(player, tickProgress);
 		if (thirdPerson) {
+			this.tudursvehiclemod$setPos(tudursvehiclemod$pullBackAlongCurrentRotation(self, area, player, eyePos));
+		} else {
+			this.tudursvehiclemod$setPos(eyePos);
+		}
+	}
+
+	/** MC Heli's CameraPosition options, for the seat's current camera position (AbstractVehicleEntity.tudursvehiclemod$getActiveCameraPosition()) - applied after tudursvehiclemod$applyVehicleRollAndPos() has placed the camera as usual (both inject at TAIL, in this order):
+	 * <ul>
+	 * <li>fixed_yaw / fixed_pitch: the view's yaw / pitch relative to the vehicle are fixed at that angle (the view still turns, pitches and rolls with the vehicle). An axis left out keeps what it would otherwise be: the player's own look, or - for an aircraft outside free look - straight ahead. Only the view: the player's own look (what weapons that follow it aim at) is left as it is.</li>
+	 * <li>force_camera: the view is always from the camera position itself - third person (F5) doesn't pull it back. A camera position more than a block from the seat's own eye (a view from outside, such as behind the vehicle) shows the player's own body, as third person would.</li>
+	 * </ul>
+	 * Nothing changes for a seat whose camera position has none of these, nor while a TV-guided missile is being steered. */
+	@Inject(method = "setup(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/entity/Entity;ZZF)V", at = @At("TAIL"))
+	private void tudursvehiclemod$applyCameraPositionOptions(Level area, Entity focusedEntity, boolean thirdPerson,
+			boolean inverseView, float tickProgress, CallbackInfo ci) {
+		if (!(focusedEntity instanceof Player player)) {
+			return;
+		}
+		Integer controlledId = com.example.tudursvehiclemod.client.TvMissileControlState.controlledEntityId;
+		if (controlledId != null && area.getEntity(controlledId) instanceof com.example.tudursvehiclemod.entity.projectile.VehicleProjectileEntity) {
+			return;
+		}
+		AbstractVehicleEntity vehicle;
+		if (player.getVehicle() instanceof AbstractVehicleEntity mounted) {
+			vehicle = mounted;
+		} else {
+			Integer remoteControlledId = com.example.tudursvehiclemod.client.RemoteControlState.controlledEntityId;
+			if (remoteControlledId != null && area.getEntity(remoteControlledId) instanceof AbstractVehicleEntity remoteVehicle) {
+				vehicle = remoteVehicle;
+			} else {
+				return;
+			}
+		}
+		com.example.tudursvehiclemod.asset.CameraPositionEntry camera = vehicle.tudursvehiclemod$getActiveCameraPosition(player);
+		if (camera == null) {
+			return;
+		}
+		boolean fixed = camera.fixedYaw().isPresent() || camera.fixedPitch().isPresent();
+		if (!fixed && !camera.forceCamera()) {
+			return;
+		}
+		Camera self = (Camera) (Object) this;
+		Vec3 eyePos = vehicle.getRotatedEyePos(player, tickProgress);
+		if (fixed) {
+			boolean lookFollowsVehicle = vehicle instanceof FreeCameraVehicle aircraft && !aircraft.tudursvehiclemod$isEffectiveFreeLook(player);
+			float relativeYaw = camera.fixedYaw().map(Double::floatValue).orElseGet(() -> lookFollowsVehicle ? 0f
+					: net.minecraft.util.Mth.wrapDegrees(player.getViewYRot(tickProgress) - vehicle.getViewYRot(tickProgress)));
+			float relativePitch = camera.fixedPitch().map(Double::floatValue).orElseGet(() -> lookFollowsVehicle ? 0f
+					: player.getViewXRot(tickProgress) - vehicle.getViewXRot(tickProgress));
+			// The camera's rotation for a view along the body's own frame: body * Ry(-yaw) * Rx(pitch), turned to face the way the camera looks (Ry(pi)) - with yaw = pitch = 0 the same rotation the aircraft view above builds from yaw/pitch/roll.
+			Quaternionf rotation = vehicle.tudursvehiclemod$getBodyOrientation(tickProgress)
+					.rotateY((float) Math.toRadians(-relativeYaw))
+					.rotateX((float) Math.toRadians(relativePitch))
+					.rotateY((float) Math.PI);
+			if (inverseView) {
+				rotation.rotateY((float) Math.PI);
+			}
+			self.rotation().set(rotation);
+		}
+		if (camera.forceCamera()) {
+			this.tudursvehiclemod$setPos(eyePos);
+			if (vehicle.tudursvehiclemod$getCameraDistanceFromSeatEye(player) > 1.0) {
+				this.detached = true;
+			}
+		} else if (thirdPerson) {
 			this.tudursvehiclemod$setPos(tudursvehiclemod$pullBackAlongCurrentRotation(self, area, player, eyePos));
 		} else {
 			this.tudursvehiclemod$setPos(eyePos);

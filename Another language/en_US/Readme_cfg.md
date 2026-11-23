@@ -284,6 +284,12 @@ with no restart.
   projectiles never force-load chunks at all. This doesn't affect
   CAS/Carrier aircraft or other always-loaded features (those are tuned
   on their own weapon/vehicle files).
+- Each projectile loads the 3x3 chunks around it, and a fast one (a
+  shell, a missile) also loads the chunks on its path ahead of it, about
+  1.5 seconds of flight (at most 256 blocks), in advance - so loading is
+  done by the time it gets there, instead of it hanging in mid-air in a
+  chunk not loaded yet (and looking stopped where far vehicles are drawn).
+  These count toward this cap too.
 - A projectile's state (explosion, fuses, guidance and so on) isn't saved
   with the world. When the server stops (including closing a
   singleplayer world), the force-loading of projectiles still in flight
