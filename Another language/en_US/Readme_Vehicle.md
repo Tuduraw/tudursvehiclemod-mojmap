@@ -599,6 +599,49 @@ How it behaves once tilted:
   this value, it's clamped down to this value.
 - **Example**: `"armor_max_damage": 40.0`
 
+### `damage_zones`
+- **Format**: array of objects (default: none)
+- **Description**: Changes the damage multiplier and minimum damage for
+  parts of the vehicle only (boxes) - to make the engine a weak spot, or
+  to give thicker or thinner armor to some faces.
+  - `center`: the box's centre `[x, y, z]`, in the model's (OBJ) own
+    coordinates, before `scale`
+  - `size`: the box's full size along each axis `[x, y, z]`, in the same
+    coordinates
+  - `damage_factor`: the damage multiplier for a hit inside the box
+    (default: `1.0`)
+  - `min_damage`: if the damage after the multiplier is below this, the hit
+    does no damage (default: `0.0`)
+  - `part` (optional): the name of a moving part the box follows - a
+    `weapon_parts` part (a turret, a barrel), a `toggle_parts` part (a
+    hatch, a canopy, landing gear), a `spinning_parts` part or a VTOL rotor
+    part. `center` and `size` are given in model coordinates with the part
+    at its resting position, and the box moves as the part turns, slides or
+    opens. A name no moving part has leaves the box fixed to the body
+- A hit inside a box uses that box's values in place of the vehicle's own
+  `armor_damage_factor` and `armor_min_damage` (`armor_max_damage` still
+  caps it). A hit outside every box uses only the vehicle's own settings,
+  as before.
+- Where a hit lands: where the projectile touched the model. Explosion
+  damage is judged at the explosion's centre (so a shell that hits a box
+  and explodes has its blast scaled by that box too). Damage with no point
+  of impact (crashes, fire, drowning) always uses the vehicle's own
+  settings.
+- Where boxes overlap, the one listed first is used (list small boxes such
+  as the engine first).
+- The boxes turn with the vehicle's body; a box with `part` also follows
+  that part's movement (for a child part, its parent's too).
+- With "Hit-Detection Mesh Debug" on in the debug menu, the boxes are drawn
+  in yellow.
+- **Example**:
+  ```json
+  "damage_zones": [
+    { "center": [0, 1.2, -2.5], "size": [1.5, 1.0, 2.0], "damage_factor": 2.0 },
+    { "center": [0, 1.0, 2.0], "size": [3.0, 2.0, 1.0], "damage_factor": 0.3, "min_damage": 8.0 },
+    { "center": [0, 2.0, -0.4], "size": [2.0, 0.8, 2.4], "damage_factor": 0.2, "min_damage": 10.0, "part": "$turret" }
+  ]
+  ```
+
 ### `damage_factor`
 - **Format**: float (default: `1.0`)
 - **Description**: A multiplier on damage taken by the riding player.

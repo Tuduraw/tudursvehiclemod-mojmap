@@ -46,6 +46,10 @@ public class TvmTestClient implements ClientModInitializer {
 			return;
 		}
 		farTicks++;
+		if (farTicks == 1 && Boolean.getBoolean("tvmtest.hitmesh")) {
+			// The hit detection debug view, with damage zones (client.debug.HitDetectionMeshDebugRenderer).
+			com.example.tudursvehiclemod.client.debug.HitDetectionMeshDebugRenderer.enabled = true;
+		}
 		if (farTicks == 1) {
 			com.example.tudursvehiclemod.client.VehicleModClient.getConfig().renderFarVehicles = true;
 			com.example.tudursvehiclemod.client.VehicleModClient.getConfig().farVehicleRenderDistance = 1024;

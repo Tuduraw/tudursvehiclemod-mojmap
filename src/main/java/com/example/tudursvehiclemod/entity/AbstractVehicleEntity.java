@@ -4681,14 +4681,150 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		}
 	}
 
+	/** Where the hit being handled by hurtServer() struck, when its caller knows (tudursvehiclemod$hurtAt()). */
+	private Vec3 pendingImpactPoint;
+
+	/** hurtServer(), for a hit that struck this vehicle at point (world coordinates): a hit inside one of its damage zones (asset.DamageZone) is scaled by that zone. This mod's projectiles hit through this; an addon dealing damage at a known point can too. */
+	public boolean tudursvehiclemod$hurtAt(ServerLevel world, DamageSource source, float amount, Vec3 point) {
+		Vec3 previous = this.pendingImpactPoint;
+		this.pendingImpactPoint = point;
+		try {
+			return this.hurtServer(world, source, amount);
+		} finally {
+			this.pendingImpactPoint = previous;
+		}
+	}
+
+	/** The point a hit struck: the one given to tudursvehiclemod$hurtAt(), or an explosion's centre; null for damage that has none (a crash, fire, drowning, a melee hit...). */
+	private Vec3 tudursvehiclemod$impactPoint(DamageSource source) {
+		if (this.pendingImpactPoint != null) {
+			return this.pendingImpactPoint;
+		}
+		if (source != null && source.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION)) {
+			return source.getSourcePosition();
+		}
+		return null;
+	}
+
+	/** The damage zone (asset.DamageZone) the world point is in - the first listed, where zones overlap - or null (none there, no point, or the vehicle has no zones). */
+	public com.example.tudursvehiclemod.asset.DamageZone tudursvehiclemod$damageZoneAt(Vec3 point) {
+		if (point == null) {
+			return null;
+		}
+		List<com.example.tudursvehiclemod.asset.DamageZone> zones = com.example.tudursvehiclemod.asset.DamageZone.of(this.getVehicleDefinitionId());
+		if (zones.isEmpty()) {
+			return null;
+		}
+		// Into the model's own coordinates, as the hit detection does (tudursvehiclemod$isWorldPointEnclosedByBody()).
+		org.joml.Vector3f local = new org.joml.Vector3f(
+				(float) (point.x - this.getX()), (float) (point.y - this.getY()), (float) (point.z - this.getZ()));
+		this.getSeatRotationCurrent().conjugate().transform(local);
+		float scale = this.getDefinition().scale();
+		if (scale > 0f) {
+			local.div(scale);
+		}
+		for (com.example.tudursvehiclemod.asset.DamageZone zone : zones) {
+			org.joml.Vector3f test = local;
+			if (zone.part().isPresent()) {
+				// A zone on a moving part: the point back into where it would be with the part at rest, where the box is given.
+				org.joml.Matrix4f partTransform = this.tudursvehiclemod$getPartTransform(zone.part().get());
+				if (partTransform != null) {
+					test = partTransform.invert(new org.joml.Matrix4f()).transformPosition(new org.joml.Vector3f(local));
+				}
+			}
+			if (zone.contains(test.x, test.y, test.z)) {
+				return zone;
+			}
+		}
+		return null;
+	}
+
+	/** How the named moving part is placed right now, in the model's coordinates: a point on the part at rest, transformed by this, is where it is now - as the model is drawn (client.render.VehicleEntityRenderer) and hit (tudursvehiclemod$isNearAnimatedParts(), whose inverse transforms these are). For a weapon part (with its parent stage, if a child), a toggle part (rotate, slide or slide_rotate, by its progress), a spinning part (with its VTOL nacelle's tilt, if it has one) or a VTOL rotor part; null when the vehicle has no moving part by that name. Works on either side. */
+	public org.joml.Matrix4f tudursvehiclemod$getPartTransform(String name) {
+		VehicleDefinition def = this.getDefinition();
+		if (def == null || name == null) {
+			return null;
+		}
+		for (com.example.tudursvehiclemod.asset.WeaponPart part : def.weaponParts()) {
+			if (!part.part().equals(name)) {
+				continue;
+			}
+			// Parent stage first, then its own (body = own(parent(rest))).
+			org.joml.Matrix4f own = tudursvehiclemod$rotationAbout(this.tudursvehiclemod$getWeaponPartOwnRotation(part, 1.0f),
+					(float) part.pivotX(), (float) part.pivotY(), (float) part.pivotZ());
+			if (part.childInfo().isPresent()) {
+				com.example.tudursvehiclemod.asset.WeaponPart.ChildInfo childInfo = part.childInfo().get();
+				own.mul(tudursvehiclemod$rotationAbout(this.tudursvehiclemod$getWeaponPartParentRotation(part, 1.0f),
+						(float) childInfo.parentPivotX(), (float) childInfo.parentPivotY(), (float) childInfo.parentPivotZ()));
+			}
+			return own;
+		}
+		for (com.example.tudursvehiclemod.asset.TogglePart part : def.toggleParts()) {
+			if (!part.part().equals(name)) {
+				continue;
+			}
+			float progress = this.getTogglePartProgress(part.part());
+			if ("landing_gear_reversed".equals(part.trigger())) {
+				progress = 1f - progress;
+			}
+			org.joml.Matrix4f rotate = tudursvehiclemod$rotationAbout(
+					tudursvehiclemod$safeAxisAngleDeg(part.axisX(), part.axisY(), part.axisZ(), part.maxAngle() * progress), part.pivotX(), part.pivotY(), part.pivotZ());
+			org.joml.Matrix4f slide = new org.joml.Matrix4f().translation(part.offsetX() * progress, part.offsetY() * progress, part.offsetZ() * progress);
+			if ("slide".equals(part.mode())) {
+				return slide;
+			}
+			if ("slide_rotate".equals(part.mode())) {
+				// Rotated first, then slid.
+				return slide.mul(rotate);
+			}
+			return rotate;
+		}
+		for (com.example.tudursvehiclemod.asset.PartAnimation part : def.spinningParts()) {
+			if (!part.part().equals(name)) {
+				continue;
+			}
+			org.joml.Matrix4f spin = tudursvehiclemod$rotationAbout(
+					tudursvehiclemod$safeAxisAngleDeg(part.axisX(), part.axisY(), part.axisZ(), this.getSpinningPartPhase(part.part())), part.pivotX(), part.pivotY(), part.pivotZ());
+			if (part.vtolRotorParent().isPresent() && this instanceof VtolEntity vtol) {
+				for (com.example.tudursvehiclemod.asset.VtolRotorPart parentRotor : def.vtolRotorParts()) {
+					if (parentRotor.part().equals(part.vtolRotorParent().get())) {
+						// Its own spin first, then the nacelle's tilt.
+						return tudursvehiclemod$rotationAbout(tudursvehiclemod$safeAxisAngleDeg(parentRotor.axisX(), parentRotor.axisY(), parentRotor.axisZ(),
+								com.example.tudursvehiclemod.asset.VtolRotorPart.resolveAngleDegrees(vtol.getVtolTiltProgress())),
+								parentRotor.pivotX(), parentRotor.pivotY(), parentRotor.pivotZ()).mul(spin);
+					}
+				}
+			}
+			return spin;
+		}
+		if (this instanceof VtolEntity vtol) {
+			for (com.example.tudursvehiclemod.asset.VtolRotorPart part : def.vtolRotorParts()) {
+				if (part.part().equals(name)) {
+					return tudursvehiclemod$rotationAbout(tudursvehiclemod$safeAxisAngleDeg(part.axisX(), part.axisY(), part.axisZ(),
+							com.example.tudursvehiclemod.asset.VtolRotorPart.resolveAngleDegrees(vtol.getVtolTiltProgress())), part.pivotX(), part.pivotY(), part.pivotZ());
+				}
+			}
+		}
+		return null;
+	}
+
+	/** The rotation about the pivot point, as a matrix: translate to the pivot, rotate, translate back. */
+	private static org.joml.Matrix4f tudursvehiclemod$rotationAbout(org.joml.Quaternionf rotation, float pivotX, float pivotY, float pivotZ) {
+		return new org.joml.Matrix4f().translation(pivotX, pivotY, pivotZ).rotate(rotation).translate(-pivotX, -pivotY, -pivotZ);
+	}
+
 	@Override
 	public boolean hurtServer(ServerLevel world, DamageSource source, float amount) {
 		if (this.isRemoved() || this.tudursvehiclemod$isDestroyed()) {
 			return false;
 		}
 		VehicleDefinition def = this.getDefinition();
-		float reduced = amount * def.armorDamageFactor();
-		if (reduced < def.armorMinDamage()) {
+		// A hit inside one of the vehicle's damage zones (asset.DamageZone) uses that zone's multiplier and minimum instead of the vehicle's own.
+		com.example.tudursvehiclemod.asset.DamageZone zone = this.tudursvehiclemod$damageZoneAt(this.tudursvehiclemod$impactPoint(source));
+		float factor = zone != null ? zone.damageFactor() : def.armorDamageFactor();
+		float minimum = zone != null ? zone.minDamage() : def.armorMinDamage();
+		float reduced = amount * factor;
+		if (reduced < minimum) {
 			return false; // below the minimum threshold - no effect at all
 		}
 		// ArmorMaxDamage - caps the reduced damage, rounding it DOWN to this value rather than letting a single huge hit apply in full - per MC Heli's own documented..
@@ -9830,7 +9966,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 			float damageAmount = tudursvehiclemod$estimateProjectileDamage(projectile);
 			net.minecraft.world.damagesource.DamageSource damageSource = tudursvehiclemod$estimateProjectileDamageSource(projectile, serverWorld);
 			if (damageAmount > 0f) {
-				this.hurtServer(serverWorld, damageSource, damageAmount);
+				this.tudursvehiclemod$hurtAt(serverWorld, damageSource, damageAmount, hit.contact());
 			}
 			// A hit registered through this custom
 			// mesh-based path went straight to a plain discard() with no
@@ -10003,7 +10139,7 @@ public abstract class AbstractVehicleEntity extends Entity implements MeshedEnti
 		AbstractVehicleEntity vehicle = hit.vehicle();
 		float damage = tudursvehiclemod$estimateProjectileDamage(projectile);
 		if (damage > 0f) {
-			vehicle.hurtServer(world, tudursvehiclemod$estimateProjectileDamageSource(projectile, world), damage);
+			vehicle.tudursvehiclemod$hurtAt(world, tudursvehiclemod$estimateProjectileDamageSource(projectile, world), damage, hit.contact());
 		}
 		return vehicle;
 	}

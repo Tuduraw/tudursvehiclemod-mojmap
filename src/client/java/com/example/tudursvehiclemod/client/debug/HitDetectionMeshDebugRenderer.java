@@ -103,6 +103,33 @@ public final class HitDetectionMeshDebugRenderer {
 		}
 	}
 
+	/** Yellow (0xFFD000) for damage zones, apart from the body's cyan and the moving parts' magenta. */
+	private static final int DEBUG_DAMAGE_ZONE_COLOR = 0xFFFFD000;
+
+	/** A damage zone's 12 edges, from the model's coordinates (moved with its part, partTransform, if it is on one) to the world as the zone is tested (AbstractVehicleEntity.tudursvehiclemod$damageZoneAt()). */
+	private static void tudursvehiclemod$drawZone(com.example.tudursvehiclemod.asset.DamageZone zone, org.joml.Matrix4f partTransform, Quaternionf bodyRotation, float scale, double x, double y, double z) {
+		Vec3[] corners = new Vec3[8];
+		for (int i = 0; i < 8; i++) {
+			Vector3f corner = new Vector3f(
+					zone.center().get(0) + ((i & 1) == 0 ? -0.5f : 0.5f) * Math.abs(zone.size().get(0)),
+					zone.center().get(1) + ((i & 2) == 0 ? -0.5f : 0.5f) * Math.abs(zone.size().get(1)),
+					zone.center().get(2) + ((i & 4) == 0 ? -0.5f : 0.5f) * Math.abs(zone.size().get(2)));
+			if (partTransform != null) {
+				partTransform.transformPosition(corner);
+			}
+			corner.mul(scale);
+			bodyRotation.transform(corner);
+			corners[i] = new Vec3(x + corner.x, y + corner.y, z + corner.z);
+		}
+		for (int i = 0; i < 8; i++) {
+			for (int bit = 1; bit < 8; bit <<= 1) {
+				if ((i & bit) == 0) {
+					tudursvehiclemod$cachedLines.add(new CachedLine(corners[i], corners[i | bit], DEBUG_DAMAGE_ZONE_COLOR));
+				}
+			}
+		}
+	}
+
 	private static void tudursvehiclemod$drawVehicle(AbstractVehicleEntity vehicle, int bodyColor, int animatedPartColor) {
 		VehicleDefinition def = vehicle.getDefinition();
 		Quaternionf bodyRotation = vehicle.tudursvehiclemod$getCurrentRotationForRendering();
@@ -110,6 +137,13 @@ public final class HitDetectionMeshDebugRenderer {
 		double vehicleX = vehicle.getX();
 		double vehicleY = vehicle.getY();
 		double vehicleZ = vehicle.getZ();
+
+		// Its damage zones (asset.DamageZone), as boxes turning with the body.
+		for (com.example.tudursvehiclemod.asset.DamageZone zone : com.example.tudursvehiclemod.asset.DamageZone.of(vehicle.getVehicleDefinitionId())) {
+			// A zone on a moving part moves with it (AbstractVehicleEntity.tudursvehiclemod$getPartTransform()).
+			org.joml.Matrix4f partTransform = zone.part().map(vehicle::tudursvehiclemod$getPartTransform).orElse(null);
+			tudursvehiclemod$drawZone(zone, partTransform, bodyRotation, scale, vehicleX, vehicleY, vehicleZ);
+		}
 
 		Set<String> animatedNames = AbstractVehicleEntity.tudursvehiclemod$getAnimatedPartNames(def);
 

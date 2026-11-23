@@ -2324,7 +2324,8 @@ public class VehicleProjectileEntity extends ThrowableItemProjectile {
 			if (falloffDamage <= 0f) {
 				continue;
 			}
-			vehicle.hurtServer(serverWorld, damageSource, falloffDamage);
+			// At the explosion's centre: a blast there is scaled by the damage zone it is in (asset.DamageZone).
+			vehicle.tudursvehiclemod$hurtAt(serverWorld, damageSource, falloffDamage, new Vec3(x, y, z));
 		}
 	}
 

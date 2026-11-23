@@ -160,6 +160,12 @@ public class TvmTest implements ModInitializer {
 								.then(CommandManager.argument("height", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 200))
 								.executes(ctx -> { AvoidTest.start(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "mode").equals("on"), StringArgumentType.getString(ctx, "obstacle"),
 										StringArgumentType.getString(ctx, "aircraft"), com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "height")); return 1; }))))))
+						.then(CommandManager.literal("zonepart").then(CommandManager.argument("vehicle", StringArgumentType.string())
+								.executes(ctx -> { ZoneTest.partRun(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "vehicle")); return 1; })))
+						.then(CommandManager.literal("zoneshow").then(CommandManager.argument("vehicle", StringArgumentType.string())
+								.executes(ctx -> { ZoneTest.show(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "vehicle")); return 1; })))
+						.then(CommandManager.literal("zone").then(CommandManager.argument("vehicle", StringArgumentType.string())
+								.executes(ctx -> { ZoneTest.run(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "vehicle")); return 1; })))
 						.then(CommandManager.literal("carmob").then(CommandManager.argument("player", StringArgumentType.word()).then(CommandManager.argument("vehicle", StringArgumentType.string())
 								.executes(ctx -> { SpeedTest.carMob(this, ctx.getSource().getWorld(), StringArgumentType.getString(ctx, "player"), StringArgumentType.getString(ctx, "vehicle")); return 1; }))))
 						.then(CommandManager.literal("dmgscale").then(CommandManager.argument("name", StringArgumentType.word())

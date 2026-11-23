@@ -29,9 +29,13 @@ public class VehicleDefinitionReloadListener implements SimpleSynchronousResourc
 		return Identifier.fromNamespaceAndPath("tudursvehiclemod", "vehicle_definitions");
 	}
 
+	/** The damage zones read during the current reload (DamageZone), by vehicle id: only vehicles that have some. */
+	private Map<Identifier, java.util.List<DamageZone>> zones = new HashMap<>();
+
 	@Override
 	public void onResourceManagerReload(ResourceManager manager) {
 		Map<Identifier, VehicleDefinition> loaded = new HashMap<>();
+		this.zones = new HashMap<>();
 
 		for (Map.Entry<Identifier, Resource> entry :
 				manager.listResources(DIRECTORY, id -> id.getPath().endsWith(SUFFIX)).entrySet()) {
@@ -47,7 +51,10 @@ public class VehicleDefinitionReloadListener implements SimpleSynchronousResourc
 				var json = VehicleJsonCompat.upgrade(JsonParser.parseReader(reader));
 				VehicleDefinition.CODEC.parse(JsonOps.INSTANCE, json)
 						.resultOrPartial(error -> LOGGER.error("Failed to parse vehicle '{}': {}", vehicleId, error))
-						.ifPresent(def -> loaded.put(vehicleId, def));
+						.ifPresent(def -> {
+							loaded.put(vehicleId, def);
+							readDamageZones(vehicleId, json, this.zones);
+						});
 			} catch (Exception e) {
 				LOGGER.error("Failed to read vehicle definition {}", vehicleId, e);
 			}
@@ -59,6 +66,7 @@ public class VehicleDefinitionReloadListener implements SimpleSynchronousResourc
 		int fromAddonsFolder = loaded.size() - fromResourcePacks;
 
 		VehicleRegistry.setAll(loaded);
+		DamageZone.setAll(this.zones);
 		LOGGER.info("Loaded {} vehicle definition(s) ({} from tudursvehiclemod-addons/, {} addon pack(s) found)",
 				loaded.size(), fromAddonsFolder, addonPackCount);
 	}
@@ -71,19 +79,22 @@ public class VehicleDefinitionReloadListener implements SimpleSynchronousResourc
 	 * so the client reads its own copy of the packs - see client.ClientDefinitions. Never throws. */
 	public static Map<Identifier, VehicleDefinition> loadWithoutResourceManager() {
 		Map<Identifier, VehicleDefinition> loaded = new HashMap<>();
+		VehicleDefinitionReloadListener listener = new VehicleDefinitionReloadListener();
 		for (var mod : net.fabricmc.loader.api.FabricLoader.getInstance().getAllMods()) {
 			for (Path modRoot : mod.getRootPaths()) {
 				for (Path namespaceDir : AddonPaths.listSubdirectories(modRoot.resolve("data"))) {
-					loadVehiclesDir(namespaceDir.getFileName().toString(), namespaceDir.resolve(DIRECTORY), loaded);
+					loadVehiclesDir(namespaceDir.getFileName().toString(), namespaceDir.resolve(DIRECTORY), loaded, listener.zones);
 				}
 			}
 		}
-		new VehicleDefinitionReloadListener().loadFromAddonsFolder(loaded);
+		listener.loadFromAddonsFolder(loaded);
+		// The damage zones too - on this client only for the debug view (client.debug.HitDetectionMeshDebugRenderer); the damage itself is the server's.
+		DamageZone.setAll(listener.zones);
 		return loaded;
 	}
 
 	/** Reads data/&lt;namespace&gt;/vehicles/**.json from a plain directory (a mod root or an addon folder). Never throws. */
-	private static void loadVehiclesDir(String namespace, Path vehiclesDir, Map<Identifier, VehicleDefinition> loaded) {
+	private static void loadVehiclesDir(String namespace, Path vehiclesDir, Map<Identifier, VehicleDefinition> loaded, Map<Identifier, java.util.List<DamageZone>> zones) {
 		if (!Files.isDirectory(vehiclesDir)) {
 			return;
 		}
@@ -96,7 +107,10 @@ public class VehicleDefinitionReloadListener implements SimpleSynchronousResourc
 					var json = VehicleJsonCompat.upgrade(JsonParser.parseReader(reader));
 					VehicleDefinition.CODEC.parse(JsonOps.INSTANCE, json)
 							.resultOrPartial(error -> LOGGER.error("Failed to parse vehicle '{}' ({}): {}", vehicleId, jsonFile, error))
-							.ifPresent(def -> loaded.put(vehicleId, def));
+							.ifPresent(def -> {
+								loaded.put(vehicleId, def);
+								readDamageZones(vehicleId, json, zones);
+							});
 				} catch (Exception e) {
 					LOGGER.error("Failed to read vehicle definition {}", jsonFile, e);
 				}
@@ -104,6 +118,18 @@ public class VehicleDefinitionReloadListener implements SimpleSynchronousResourc
 		} catch (Exception e) {
 			LOGGER.error("Failed to scan {}", vehiclesDir, e);
 		}
+	}
+
+	/** A vehicle file's "damage_zones" (DamageZone) into zones - replacing whatever an earlier file with the same id had, so the definition and its zones always come from the same file. A malformed list is logged and left out (the vehicle still loads, without zones). */
+	private static void readDamageZones(Identifier vehicleId, com.google.gson.JsonElement json, Map<Identifier, java.util.List<DamageZone>> zones) {
+		zones.remove(vehicleId);
+		if (!json.isJsonObject() || !json.getAsJsonObject().has("damage_zones")) {
+			return;
+		}
+		DamageZone.CODEC.listOf().parse(JsonOps.INSTANCE, json.getAsJsonObject().get("damage_zones"))
+				.resultOrPartial(error -> LOGGER.error("Failed to parse damage_zones of vehicle '{}': {}", vehicleId, error))
+				.filter(list -> !list.isEmpty())
+				.ifPresent(list -> zones.put(vehicleId, java.util.List.copyOf(list)));
 	}
 
 	/** See AddonPaths for the expected folder layout. Never throws. */
@@ -127,7 +153,10 @@ public class VehicleDefinitionReloadListener implements SimpleSynchronousResourc
 							VehicleDefinition.CODEC.parse(JsonOps.INSTANCE, json)
 									.resultOrPartial(error -> LOGGER.error(
 											"Failed to parse addon vehicle '{}' ({}): {}", vehicleId, jsonFile, error))
-									.ifPresent(def -> loaded.put(vehicleId, def));
+									.ifPresent(def -> {
+										loaded.put(vehicleId, def);
+										readDamageZones(vehicleId, json, this.zones);
+									});
 						} catch (Exception e) {
 							LOGGER.error("Failed to read addon vehicle definition {}", jsonFile, e);
 						}
